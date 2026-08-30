@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 import uvicorn
@@ -15,9 +15,6 @@ import hashlib
 import time
 from fastapi.middleware.cors import CORSMiddleware
 import copy
-import asyncio
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 app = FastAPI(title="HEX Protocol System", version="6.0", docs_url="/api/docs", redoc_url=None)
 
@@ -30,9 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Security
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "hexadmin2024")
+# Security - Simple hardcoded credentials for reliability
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "hexadmin2024"
 
 # Database setup
 DB_PATH = Path("config.db")
@@ -100,7 +97,7 @@ DEFAULT_CONFIG = {
     "freefire_logo_url": "https://i.ibb.co/nsqT2bjJ/Garena-Free-Fire-Icon.jpg",
     "freefire_max_logo_url": "https://i.ibb.co/Wv5pthbL/unnamed.webp",
     
-    "api_base_url": "https://hex-protocol-server-production.up.railway.app",
+    "api_base_url": "https://key-system-production-1bc5.up.railway.app",
     
     "update_available": False,
     "update_version": "2.1.0",
@@ -313,40 +310,38 @@ def create_backup(note: str = ""):
         print(f"Error creating backup: {e}")
         return False
 
-# Modern Admin Panel HTML with Glassmorphism
-MODERN_ADMIN_HTML = """
+# Futuristic 3D Web UI
+FUTURISTIC_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HEX Protocol Control Center</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>HEX Protocol - 3D Control Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0a0e17;
-            --surface: rgba(255, 255, 255, 0.03);
-            --surface-hover: rgba(255, 255, 255, 0.05);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-hover: rgba(255, 255, 255, 0.15);
-            --text: #e5e7eb;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --primary: #8b5cf6;
-            --primary-hover: #7c3aed;
-            --primary-glow: rgba(139, 92, 246, 0.3);
-            --success: #10b981;
-            --success-glow: rgba(16, 185, 129, 0.3);
-            --danger: #ef4444;
-            --danger-glow: rgba(239, 68, 68, 0.3);
-            --warning: #f59e0b;
-            --warning-glow: rgba(245, 158, 11, 0.3);
-            --info: #3b82f6;
-            --info-glow: rgba(59, 130, 246, 0.3);
-            --radius: 16px;
-            --radius-sm: 8px;
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --bg: #000010;
+            --surface: rgba(20, 20, 40, 0.8);
+            --surface-hover: rgba(30, 30, 60, 0.9);
+            --border: rgba(100, 100, 255, 0.2);
+            --border-hover: rgba(100, 100, 255, 0.5);
+            --text: #e0e0ff;
+            --text-secondary: #a0a0cc;
+            --text-muted: #606080;
+            --primary: #00ffff;
+            --primary-hover: #00cccc;
+            --primary-glow: rgba(0, 255, 255, 0.3);
+            --secondary: #ff00ff;
+            --secondary-glow: rgba(255, 0, 255, 0.3);
+            --success: #00ff88;
+            --success-glow: rgba(0, 255, 136, 0.3);
+            --danger: #ff0044;
+            --danger-glow: rgba(255, 0, 68, 0.3);
+            --warning: #ffaa00;
+            --warning-glow: rgba(255, 170, 0, 0.3);
+            --info: #4488ff;
+            --info-glow: rgba(68, 136, 255, 0.3);
         }
         
         * {
@@ -356,48 +351,70 @@ MODERN_ADMIN_HTML = """
         }
         
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Rajdhani', sans-serif;
             background: var(--bg);
             color: var(--text);
             line-height: 1.6;
             min-height: 100vh;
             position: relative;
             overflow-x: hidden;
+            cursor: default;
         }
         
-        body::before {
-            content: '';
+        /* 3D Grid Background */
+        #grid-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: 
-                radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.15), transparent 50%),
-                radial-gradient(ellipse at bottom right, rgba(16, 185, 129, 0.1), transparent 50%),
-                radial-gradient(ellipse at center, rgba(59, 130, 246, 0.05), transparent 70%);
-            pointer-events: none;
             z-index: 0;
+            pointer-events: none;
+        }
+        
+        /* Particle System */
+        .particle {
+            position: fixed;
+            width: 2px;
+            height: 2px;
+            background: var(--primary);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1;
+            animation: float-particle 3s infinite;
+            box-shadow: 0 0 10px var(--primary);
+        }
+        
+        @keyframes float-particle {
+            0%, 100% { transform: translateY(0) translateX(0); opacity: 0; }
+            50% { transform: translateY(-50px) translateX(20px); opacity: 1; }
         }
         
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 24px;
+            padding: 20px;
             position: relative;
-            z-index: 1;
+            z-index: 2;
         }
         
+        /* Header with 3D effect */
         .header {
-            background: var(--surface);
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(255, 0, 255, 0.1));
             backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 32px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
             position: relative;
             overflow: hidden;
+            transform-style: preserve-3d;
+            animation: header-float 6s ease-in-out infinite;
+        }
+        
+        @keyframes header-float {
+            0%, 100% { transform: translateY(0) rotateX(0deg); }
+            50% { transform: translateY(-5px) rotateX(2deg); }
         }
         
         .header::before {
@@ -405,92 +422,152 @@ MODERN_ADMIN_HTML = """
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--primary), var(--success), var(--info));
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+            animation: header-shine 3s infinite;
+        }
+        
+        @keyframes header-shine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
         }
         
         .header h1 {
+            font-family: 'Orbitron', sans-serif;
             font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #8b5cf6, #10b981, #3b82f6);
+            font-weight: 900;
+            background: linear-gradient(135deg, #00ffff, #ff00ff, #00ffff);
+            background-size: 200% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
+            animation: gradient-shift 3s ease-in-out infinite;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+        }
+        
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
         
         .header p {
             color: var(--text-secondary);
             font-size: 1.1rem;
-            font-weight: 400;
+            letter-spacing: 1px;
         }
         
+        /* 3D Navigation */
         .nav {
             display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
+            gap: 10px;
+            margin-bottom: 30px;
             flex-wrap: wrap;
             position: sticky;
-            top: 16px;
+            top: 20px;
             z-index: 100;
-            background: rgba(10, 14, 23, 0.8);
+            background: rgba(0, 0, 16, 0.9);
             backdrop-filter: blur(20px);
-            padding: 12px;
-            border-radius: var(--radius);
+            padding: 15px;
+            border-radius: 15px;
             border: 1px solid var(--border);
+            transform-style: preserve-3d;
         }
         
         .nav-item {
-            padding: 10px 20px;
+            padding: 12px 20px;
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
+            border-radius: 10px;
             cursor: pointer;
-            transition: var(--transition);
+            transition: all 0.3s;
             color: var(--text-secondary);
-            font-weight: 500;
+            font-weight: 600;
             font-size: 0.9rem;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
             white-space: nowrap;
         }
         
+        .nav-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        
         .nav-item:hover {
-            background: var(--surface-hover);
-            border-color: var(--border-hover);
+            border-color: var(--primary);
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 10px 30px var(--primary-glow);
             color: var(--text);
-            transform: translateY(-2px);
         }
         
         .nav-item.active {
-            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
-            color: white;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #000;
             border-color: transparent;
-            box-shadow: 0 4px 16px var(--primary-glow);
+            box-shadow: 0 10px 40px var(--primary-glow);
+            animation: nav-pulse 2s infinite;
         }
         
+        @keyframes nav-pulse {
+            0%, 100% { box-shadow: 0 0 20px var(--primary-glow); }
+            50% { box-shadow: 0 0 40px var(--secondary-glow); }
+        }
+        
+        /* Cards with 3D effect */
         .card {
             background: var(--surface);
             backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 24px;
+            border-radius: 15px;
+            padding: 25px;
             margin-bottom: 20px;
-            box-shadow: var(--shadow);
-            transition: var(--transition);
+            transition: all 0.3s;
+            transform-style: preserve-3d;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: all 0.3s;
         }
         
         .card:hover {
             border-color: var(--border-hover);
-            transform: translateY(-2px);
+            transform: translateY(-5px) rotateX(2deg);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .card:hover::before {
+            opacity: 1;
         }
         
         .card h2 {
-            font-size: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.3rem;
             font-weight: 700;
             margin-bottom: 20px;
-            color: var(--text);
-            letter-spacing: -0.3px;
+            color: var(--primary);
+            letter-spacing: 1px;
+            text-shadow: 0 0 20px var(--primary-glow);
         }
         
         .card h3 {
@@ -500,6 +577,7 @@ MODERN_ADMIN_HTML = """
             color: var(--text);
         }
         
+        /* Grid layouts */
         .grid {
             display: grid;
             gap: 20px;
@@ -516,10 +594,10 @@ MODERN_ADMIN_HTML = """
         @media (max-width: 768px) {
             .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
             .header h1 { font-size: 1.8rem; }
-            .nav { padding: 8px; }
-            .nav-item { padding: 8px 16px; font-size: 0.8rem; }
+            .nav-item { padding: 8px 12px; font-size: 0.8rem; }
         }
         
+        /* Form elements */
         .form-group {
             margin-bottom: 20px;
         }
@@ -528,10 +606,10 @@ MODERN_ADMIN_HTML = """
             display: block;
             margin-bottom: 8px;
             color: var(--text-secondary);
-            font-weight: 500;
+            font-weight: 600;
             font-size: 0.85rem;
+            letter-spacing: 1px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         
         .form-group input,
@@ -539,13 +617,13 @@ MODERN_ADMIN_HTML = """
         .form-group select {
             width: 100%;
             padding: 12px 16px;
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(0, 0, 0, 0.5);
             border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
+            border-radius: 8px;
             color: var(--text);
             font-size: 0.95rem;
-            transition: var(--transition);
-            font-family: 'Inter', sans-serif;
+            transition: all 0.3s;
+            font-family: 'Rajdhani', sans-serif;
         }
         
         .form-group input:focus,
@@ -553,7 +631,8 @@ MODERN_ADMIN_HTML = """
         .form-group select:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px var(--primary-glow);
+            box-shadow: 0 0 20px var(--primary-glow);
+            background: rgba(0, 0, 0, 0.7);
         }
         
         .form-group textarea {
@@ -561,64 +640,73 @@ MODERN_ADMIN_HTML = """
             resize: vertical;
         }
         
+        /* Buttons */
         .btn {
             padding: 12px 24px;
             border: none;
-            border-radius: var(--radius-sm);
+            border-radius: 8px;
             font-size: 0.9rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            transition: var(--transition);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-family: 'Inter', sans-serif;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transform: translateX(-100%);
+            transition: all 0.5s;
+        }
+        
+        .btn:hover::before {
+            transform: translateX(100%);
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
-            color: white;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #000;
         }
         
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px var(--primary-glow);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px var(--primary-glow);
         }
         
         .btn-success {
-            background: linear-gradient(135deg, var(--success), #059669);
-            color: white;
-        }
-        
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px var(--success-glow);
+            background: linear-gradient(135deg, var(--success), #00cc66);
+            color: #000;
         }
         
         .btn-danger {
-            background: linear-gradient(135deg, var(--danger), #dc2626);
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px var(--danger-glow);
+            background: linear-gradient(135deg, var(--danger), #cc0033);
+            color: #fff;
         }
         
         .btn-warning {
-            background: linear-gradient(135deg, var(--warning), #d97706);
-            color: white;
+            background: linear-gradient(135deg, var(--warning), #cc8800);
+            color: #000;
         }
         
         .btn-info {
-            background: linear-gradient(135deg, var(--info), #2563eb);
-            color: white;
+            background: linear-gradient(135deg, var(--info), #3366cc);
+            color: #fff;
         }
         
+        /* Toggle switches */
         .toggle {
             position: relative;
             display: inline-block;
             width: 50px;
-            height: 28px;
+            height: 26px;
         }
         
         .toggle input {
@@ -635,95 +723,100 @@ MODERN_ADMIN_HTML = """
             right: 0;
             bottom: 0;
             background: rgba(255, 255, 255, 0.1);
-            transition: var(--transition);
-            border-radius: 28px;
+            transition: all 0.3s;
+            border-radius: 26px;
+            border: 1px solid var(--border);
         }
         
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 20px;
-            width: 20px;
-            left: 4px;
-            bottom: 4px;
-            background: white;
-            transition: var(--transition);
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text-secondary);
+            transition: all 0.3s;
             border-radius: 50%;
         }
         
         .toggle input:checked + .toggle-slider {
-            background: var(--primary);
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-color: transparent;
         }
         
         .toggle input:checked + .toggle-slider:before {
-            transform: translateX(22px);
+            transform: translateX(24px);
+            background: #000;
         }
         
+        /* Badges */
         .badge {
             display: inline-block;
-            padding: 6px 12px;
+            padding: 5px 12px;
             border-radius: 20px;
             font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.5px;
+            font-weight: 700;
+            letter-spacing: 1px;
         }
         
         .badge-success {
-            background: rgba(16, 185, 129, 0.1);
+            background: rgba(0, 255, 136, 0.2);
             color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success);
         }
         
         .badge-danger {
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(255, 0, 68, 0.2);
             color: var(--danger);
-            border: 1px solid rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger);
         }
         
         .badge-warning {
-            background: rgba(245, 158, 11, 0.1);
+            background: rgba(255, 170, 0, 0.2);
             color: var(--warning);
-            border: 1px solid rgba(245, 158, 11, 0.2);
+            border: 1px solid var(--warning);
         }
         
         .badge-info {
-            background: rgba(59, 130, 246, 0.1);
+            background: rgba(68, 136, 255, 0.2);
             color: var(--info);
-            border: 1px solid rgba(59, 130, 246, 0.2);
+            border: 1px solid var(--info);
         }
         
+        /* Stats */
         .stat-card {
             background: var(--surface);
-            backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 24px;
+            border-radius: 15px;
+            padding: 20px;
             text-align: center;
-            transition: var(--transition);
+            transition: all 0.3s;
+            transform-style: preserve-3d;
         }
         
         .stat-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--border-hover);
-            box-shadow: var(--shadow);
+            transform: translateY(-5px) rotateX(5deg);
+            border-color: var(--primary);
+            box-shadow: 0 15px 40px var(--primary-glow);
         }
         
         .stat-card .value {
-            font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--text), var(--text-secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--primary);
+            text-shadow: 0 0 20px var(--primary-glow);
             margin-bottom: 8px;
         }
         
         .stat-card .label {
             color: var(--text-secondary);
             font-size: 0.9rem;
-            font-weight: 500;
+            letter-spacing: 1px;
         }
         
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -731,7 +824,7 @@ MODERN_ADMIN_HTML = """
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 16, 0.9);
             backdrop-filter: blur(10px);
             z-index: 1000;
             justify-content: center;
@@ -739,67 +832,91 @@ MODERN_ADMIN_HTML = """
         }
         
         .modal-content {
-            background: var(--bg);
+            background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 32px;
+            border-radius: 20px;
+            padding: 30px;
             max-width: 600px;
             width: 90%;
-            box-shadow: var(--shadow);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             max-height: 90vh;
             overflow-y: auto;
+            transform: scale(0.9);
+            animation: modal-in 0.3s forwards;
+        }
+        
+        @keyframes modal-in {
+            to { transform: scale(1); }
         }
         
         .modal-content h3 {
+            font-family: 'Orbitron', sans-serif;
             font-size: 1.5rem;
-            font-weight: 700;
             margin-bottom: 24px;
-            background: linear-gradient(135deg, var(--primary), var(--success));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .json-viewer {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 20px;
-            overflow: auto;
-            max-height: 600px;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: var(--text);
-        }
-        
-        .log-entry {
-            padding: 16px;
-            border-left: 3px solid var(--primary);
-            margin-bottom: 12px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: var(--radius-sm);
+            color: var(--primary);
+            text-shadow: 0 0 20px var(--primary-glow);
         }
         
         .button-actions {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
-            margin-top: 16px;
+            margin-top: 15px;
         }
         
         .quick-actions {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
+        }
+        
+        .json-viewer {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+            max-height: 600px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+        
+        .log-entry {
+            padding: 15px;
+            border-left: 3px solid var(--primary);
+            margin-bottom: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, var(--success), #00cc66);
+            color: #000;
+            border-radius: 10px;
+            font-weight: 700;
+            z-index: 2000;
+            animation: toast-in 0.3s ease;
+        }
+        
+        @keyframes toast-in {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
     </style>
 </head>
 <body>
+    <canvas id="grid-canvas"></canvas>
+    
     <div class="container">
         <div class="header">
-            <h1>HEX Protocol Control Center</h1>
-            <p>Premium Configuration Management System</p>
+            <h1>HEX PROTOCOL</h1>
+            <p>3D Control Center v6.0</p>
         </div>
         
         <div class="nav">
@@ -820,237 +937,209 @@ MODERN_ADMIN_HTML = """
             <div class="grid grid-4">
                 <div class="stat-card">
                     <div class="value" id="stat-buttons">0</div>
-                    <div class="label">Total Buttons</div>
+                    <div class="label">TOTAL BUTTONS</div>
                 </div>
                 <div class="stat-card">
                     <div class="value" id="stat-rootlibs">0</div>
-                    <div class="label">Root Libraries</div>
+                    <div class="label">ROOT LIBS</div>
                 </div>
                 <div class="stat-card">
                     <div class="value" id="stat-assets">0</div>
-                    <div class="label">Assets</div>
+                    <div class="label">ASSETS</div>
                 </div>
                 <div class="stat-card">
                     <div class="value" id="stat-backups">0</div>
-                    <div class="label">Backups</div>
+                    <div class="label">BACKUPS</div>
                 </div>
             </div>
             
             <div class="card">
-                <h2>Quick Actions</h2>
+                <h2>QUICK ACTIONS</h2>
                 <div class="quick-actions">
-                    <button class="btn btn-primary" onclick="toggleGlobalMaintenance()">Toggle Maintenance</button>
-                    <button class="btn btn-success" onclick="createBackup()">Create Backup</button>
-                    <button class="btn btn-info" onclick="exportConfig()">Export Config</button>
-                    <button class="btn btn-warning" onclick="location.reload()">Refresh</button>
+                    <button class="btn btn-primary" onclick="toggleMaintenance()">TOGGLE MAINTENANCE</button>
+                    <button class="btn btn-success" onclick="createBackup()">CREATE BACKUP</button>
+                    <button class="btn btn-info" onclick="exportConfig()">EXPORT CONFIG</button>
+                    <button class="btn btn-warning" onclick="location.reload()">REFRESH</button>
                 </div>
             </div>
             
             <div class="card">
-                <h2>System Status</h2>
+                <h2>SYSTEM STATUS</h2>
                 <div id="system-status"></div>
             </div>
         </div>
         
         <div id="general" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>General Configuration</h2>
+                <h2>GENERAL CONFIGURATION</h2>
                 <div class="grid grid-2">
                     <div class="form-group">
-                        <label>App Name</label>
+                        <label>APP NAME</label>
                         <input type="text" id="app_name">
                     </div>
                     <div class="form-group">
-                        <label>Login Name</label>
+                        <label>LOGIN NAME</label>
                         <input type="text" id="login_name">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Maintenance Message</label>
+                    <label>MAINTENANCE MESSAGE</label>
                     <textarea id="maintenance_message"></textarea>
                 </div>
                 <div class="grid grid-2">
                     <div class="form-group">
-                        <label>Telegram Link</label>
+                        <label>TELEGRAM LINK</label>
                         <input type="text" id="telegram_link">
                     </div>
                     <div class="form-group">
-                        <label>Get Key Link</label>
+                        <label>GET KEY LINK</label>
                         <input type="text" id="get_key_link">
                     </div>
                 </div>
                 <div class="grid grid-2">
                     <div class="form-group">
-                        <label>Logo URL</label>
+                        <label>LOGO URL</label>
                         <input type="text" id="logo_url">
                     </div>
                     <div class="form-group">
-                        <label>Shizuku Logo URL</label>
+                        <label>SHIZUKU LOGO URL</label>
                         <input type="text" id="shizuku_logo_url">
                     </div>
                 </div>
                 <div class="grid grid-2">
                     <div class="form-group">
-                        <label>Free Fire Logo URL</label>
+                        <label>FREE FIRE LOGO URL</label>
                         <input type="text" id="freefire_logo_url">
                     </div>
                     <div class="form-group">
-                        <label>Free Fire MAX Logo URL</label>
+                        <label>FREE FIRE MAX LOGO URL</label>
                         <input type="text" id="freefire_max_logo_url">
                     </div>
                 </div>
-                <button class="btn btn-primary" onclick="saveGeneral()">Save Settings</button>
-            </div>
-            
-            <div class="card">
-                <h2>Update Configuration</h2>
-                <div class="form-group">
-                    <label class="toggle">
-                        <input type="checkbox" id="update_available">
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span style="margin-left: 12px;">Update Available</span>
-                </div>
-                <div class="grid grid-2">
-                    <div class="form-group">
-                        <label>Update Version</label>
-                        <input type="text" id="update_version">
-                    </div>
-                    <div class="form-group">
-                        <label>Update URL</label>
-                        <input type="text" id="update_url">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Update Changelog</label>
-                    <textarea id="update_changelog"></textarea>
-                </div>
-                <button class="btn btn-primary" onclick="saveUpdate()">Save Update Settings</button>
+                <button class="btn btn-primary" onclick="saveGeneral()">SAVE SETTINGS</button>
             </div>
         </div>
         
         <div id="maintenance" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Maintenance Control</h2>
+                <h2>MAINTENANCE CONTROL</h2>
                 <div class="grid grid-2">
                     <div class="form-group">
                         <label class="toggle">
-                            <input type="checkbox" id="maintenance">
+                            <input type="checkbox" id="maintenance" onchange="saveMaintenance()">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="margin-left: 12px;">Global Maintenance</span>
+                        <span style="margin-left: 12px;">GLOBAL MAINTENANCE</span>
                     </div>
                     <div class="form-group">
                         <label class="toggle">
-                            <input type="checkbox" id="root_maintenance">
+                            <input type="checkbox" id="root_maintenance" onchange="saveMaintenance()">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="margin-left: 12px;">Root Maintenance</span>
+                        <span style="margin-left: 12px;">ROOT MAINTENANCE</span>
                     </div>
                     <div class="form-group">
                         <label class="toggle">
-                            <input type="checkbox" id="nonroot_maintenance">
+                            <input type="checkbox" id="nonroot_maintenance" onchange="saveMaintenance()">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="margin-left: 12px;">Non-Root Maintenance</span>
+                        <span style="margin-left: 12px;">NON-ROOT MAINTENANCE</span>
                     </div>
                     <div class="form-group">
                         <label class="toggle">
-                            <input type="checkbox" id="freefire_maintenance">
+                            <input type="checkbox" id="freefire_maintenance" onchange="saveMaintenance()">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="margin-left: 12px;">Free Fire Maintenance</span>
+                        <span style="margin-left: 12px;">FREE FIRE MAINTENANCE</span>
                     </div>
                     <div class="form-group">
                         <label class="toggle">
-                            <input type="checkbox" id="freefire_max_maintenance">
+                            <input type="checkbox" id="freefire_max_maintenance" onchange="saveMaintenance()">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="margin-left: 12px;">Free Fire MAX Maintenance</span>
+                        <span style="margin-left: 12px;">FREE FIRE MAX MAINTENANCE</span>
                     </div>
                 </div>
-                <button class="btn btn-primary" onclick="saveMaintenance()">Save Maintenance Settings</button>
             </div>
         </div>
         
         <div id="freefire" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Free Fire Buttons</h2>
+                <h2>FREE FIRE BUTTONS</h2>
                 <div id="freefire-buttons"></div>
-                <button class="btn btn-primary" onclick="addButton('freefire_buttons')">Add Button</button>
+                <button class="btn btn-primary" onclick="addButton('freefire_buttons')">ADD BUTTON</button>
             </div>
         </div>
         
         <div id="ffmax" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Free Fire MAX Buttons</h2>
+                <h2>FREE FIRE MAX BUTTONS</h2>
                 <div id="ffmax-buttons"></div>
-                <button class="btn btn-primary" onclick="addButton('freefire_max_buttons')">Add Button</button>
+                <button class="btn btn-primary" onclick="addButton('freefire_max_buttons')">ADD BUTTON</button>
             </div>
         </div>
         
         <div id="rootlibs" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Root Libraries</h2>
+                <h2>ROOT LIBRARIES</h2>
                 <div id="rootlibs-list"></div>
-                <button class="btn btn-primary" onclick="addRootLib()">Add Root Library</button>
+                <button class="btn btn-primary" onclick="addRootLib()">ADD ROOT LIB</button>
             </div>
         </div>
         
         <div id="assets" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Assets Management</h2>
+                <h2>ASSETS MANAGEMENT</h2>
                 <div class="form-group">
-                    <label>Assets Version</label>
-                    <input type="text" id="assets_version">
+                    <label>ASSETS VERSION</label>
+                    <input type="text" id="assets_version" onchange="saveAssetsVersion()">
                 </div>
                 <div id="assets-list"></div>
-                <button class="btn btn-primary" onclick="addAsset()">Add Asset</button>
-                <button class="btn btn-primary" onclick="saveAssetsVersion()">Save Version</button>
+                <button class="btn btn-primary" onclick="addAsset()">ADD ASSET</button>
             </div>
         </div>
         
         <div id="api" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>API Configuration</h2>
+                <h2>API CONFIGURATION</h2>
                 <div class="form-group">
-                    <label>API Base URL</label>
+                    <label>API BASE URL</label>
                     <input type="text" id="api_base_url">
                 </div>
                 <div class="form-group">
-                    <label>Master Key</label>
+                    <label>MASTER KEY</label>
                     <input type="text" id="master_key">
                 </div>
                 <div class="form-group">
-                    <label>Master Key Expiry</label>
+                    <label>MASTER KEY EXPIRY</label>
                     <input type="datetime-local" id="master_key_expiry">
                 </div>
-                <button class="btn btn-primary" onclick="saveApiConfig()">Save API Configuration</button>
+                <button class="btn btn-primary" onclick="saveApiConfig()">SAVE API CONFIG</button>
             </div>
         </div>
         
         <div id="backups" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Configuration Backups</h2>
-                <button class="btn btn-success" onclick="createBackup()">Create New Backup</button>
+                <h2>CONFIGURATION BACKUPS</h2>
+                <button class="btn btn-success" onclick="createBackup()">CREATE NEW BACKUP</button>
                 <div id="backups-list" style="margin-top: 20px;"></div>
             </div>
         </div>
         
         <div id="logs" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Audit Logs</h2>
+                <h2>AUDIT LOGS</h2>
                 <div id="logs-list"></div>
             </div>
         </div>
         
         <div id="json" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>JSON Configuration</h2>
+                <h2>JSON CONFIGURATION</h2>
                 <div class="button-actions">
-                    <button class="btn btn-primary" onclick="refreshJson()">Refresh</button>
-                    <button class="btn btn-success" onclick="copyJson()">Copy</button>
-                    <button class="btn btn-info" onclick="downloadJson()">Download</button>
+                    <button class="btn btn-primary" onclick="refreshJson()">REFRESH</button>
+                    <button class="btn btn-success" onclick="copyJson()">COPY</button>
+                    <button class="btn btn-info" onclick="downloadJson()">DOWNLOAD</button>
                 </div>
                 <div class="json-viewer" id="json-viewer" style="margin-top: 20px;"></div>
             </div>
@@ -1059,13 +1148,13 @@ MODERN_ADMIN_HTML = """
     
     <div class="modal" id="button-modal">
         <div class="modal-content">
-            <h3 id="modal-title">Button Configuration</h3>
+            <h3 id="modal-title">BUTTON CONFIGURATION</h3>
             <div class="form-group">
-                <label>Button ID</label>
+                <label>BUTTON ID</label>
                 <input type="text" id="btn-id">
             </div>
             <div class="form-group">
-                <label>Button Name</label>
+                <label>BUTTON NAME</label>
                 <input type="text" id="btn-name">
             </div>
             <div class="form-group">
@@ -1073,7 +1162,7 @@ MODERN_ADMIN_HTML = """
                 <input type="text" id="btn-url">
             </div>
             <div class="form-group">
-                <label>Key URL</label>
+                <label>KEY URL</label>
                 <input type="text" id="btn-key-url">
             </div>
             <div class="grid grid-3">
@@ -1082,39 +1171,39 @@ MODERN_ADMIN_HTML = """
                         <input type="checkbox" id="btn-enabled" checked>
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="margin-left: 12px;">Enabled</span>
+                    <span style="margin-left: 12px;">ENABLED</span>
                 </div>
                 <div class="form-group">
                     <label class="toggle">
                         <input type="checkbox" id="btn-maintenance">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="margin-left: 12px;">Maintenance</span>
+                    <span style="margin-left: 12px;">MAINTENANCE</span>
                 </div>
                 <div class="form-group">
                     <label class="toggle">
                         <input type="checkbox" id="btn-persist">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="margin-left: 12px;">Persist</span>
+                    <span style="margin-left: 12px;">PERSIST</span>
                 </div>
             </div>
             <div class="button-actions">
-                <button class="btn btn-primary" onclick="saveButton()">Save</button>
-                <button class="btn btn-danger" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveButton()">SAVE</button>
+                <button class="btn btn-danger" onclick="closeModal()">CANCEL</button>
             </div>
         </div>
     </div>
     
     <div class="modal" id="rootlib-modal">
         <div class="modal-content">
-            <h3>Root Library Configuration</h3>
+            <h3>ROOT LIBRARY CONFIGURATION</h3>
             <div class="form-group">
-                <label>Library ID</label>
+                <label>LIBRARY ID</label>
                 <input type="text" id="lib-id">
             </div>
             <div class="form-group">
-                <label>Library Name</label>
+                <label>LIBRARY NAME</label>
                 <input type="text" id="lib-name">
             </div>
             <div class="form-group">
@@ -1122,11 +1211,11 @@ MODERN_ADMIN_HTML = """
                 <input type="text" id="lib-url">
             </div>
             <div class="form-group">
-                <label>Library Path</label>
+                <label>LIBRARY PATH</label>
                 <input type="text" id="lib-path">
             </div>
             <div class="form-group">
-                <label>Architecture</label>
+                <label>ARCHITECTURE</label>
                 <select id="lib-arch">
                     <option value="arm64">ARM64</option>
                     <option value="arm">ARM</option>
@@ -1140,37 +1229,37 @@ MODERN_ADMIN_HTML = """
                         <input type="checkbox" id="lib-enabled" checked>
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="margin-left: 12px;">Enabled</span>
+                    <span style="margin-left: 12px;">ENABLED</span>
                 </div>
                 <div class="form-group">
                     <label class="toggle">
                         <input type="checkbox" id="lib-maintenance">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="margin-left: 12px;">Maintenance</span>
+                    <span style="margin-left: 12px;">MAINTENANCE</span>
                 </div>
             </div>
             <div class="button-actions">
-                <button class="btn btn-primary" onclick="saveRootLib()">Save</button>
-                <button class="btn btn-danger" onclick="closeRootLibModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRootLib()">SAVE</button>
+                <button class="btn btn-danger" onclick="closeRootLibModal()">CANCEL</button>
             </div>
         </div>
     </div>
     
     <div class="modal" id="asset-modal">
         <div class="modal-content">
-            <h3>Asset Configuration</h3>
+            <h3>ASSET CONFIGURATION</h3>
             <div class="form-group">
-                <label>Asset Name</label>
+                <label>ASSET NAME</label>
                 <input type="text" id="asset-name">
             </div>
             <div class="form-group">
-                <label>Asset URL</label>
+                <label>ASSET URL</label>
                 <input type="text" id="asset-url">
             </div>
             <div class="button-actions">
-                <button class="btn btn-primary" onclick="saveAsset()">Save</button>
-                <button class="btn btn-danger" onclick="closeAssetModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveAsset()">SAVE</button>
+                <button class="btn btn-danger" onclick="closeAssetModal()">CANCEL</button>
             </div>
         </div>
     </div>
@@ -1179,6 +1268,70 @@ MODERN_ADMIN_HTML = """
         let currentConfig = null;
         let editingType = null;
         let editingIndex = null;
+        
+        // 3D Grid Background
+        const canvas = document.getElementById('grid-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        function drawGrid() {
+            ctx.fillStyle = '#000010';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const gridSize = 50;
+            const offset = (Date.now() * 0.05) % gridSize;
+            
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            
+            // Vertical lines
+            for (let x = -offset; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // Horizontal lines
+            for (let y = -offset; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Glowing points at intersections
+            for (let x = -offset; x < canvas.width; x += gridSize) {
+                for (let y = -offset; y < canvas.height; y += gridSize) {
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            requestAnimationFrame(drawGrid);
+        }
+        
+        drawGrid();
+        
+        // Create particles
+        for (let i = 0; i < 50; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 3 + 's';
+            particle.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            document.body.appendChild(particle);
+        }
         
         function showTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
@@ -1221,34 +1374,21 @@ MODERN_ADMIN_HTML = """
                 });
                 const data = await response.json();
                 if (data.success) {
-                    showToast('Configuration saved successfully');
+                    showToast('CONFIGURATION SAVED');
                 }
             } catch (error) {
                 console.error('Error saving config:', error);
-                showToast('Error saving configuration', 'error');
+                showToast('ERROR SAVING CONFIGURATION', true);
             }
         }
         
-        function showToast(message, type = 'success') {
+        function showToast(message, isError = false) {
             const toast = document.createElement('div');
-            toast.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 16px 24px;
-                background: ${type === 'success' ? 'var(--success)' : 'var(--danger)'};
-                color: white;
-                border-radius: 8px;
-                font-weight: 600;
-                z-index: 2000;
-                animation: slideIn 0.3s ease;
-            `;
+            toast.className = 'toast';
+            toast.style.background = isError ? 'linear-gradient(135deg, #ff0044, #cc0033)' : 'linear-gradient(135deg, #00ff88, #00cc66)';
             toast.textContent = message;
             document.body.appendChild(toast);
-            setTimeout(() => {
-                toast.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => toast.remove(), 300);
-            }, 2000);
+            setTimeout(() => toast.remove(), 2000);
         }
         
         async function loadDashboard() {
@@ -1264,24 +1404,22 @@ MODERN_ADMIN_HTML = """
                 const response = await fetch('/api/admin/backups/count');
                 const data = await response.json();
                 document.getElementById('stat-backups').textContent = data.count || 0;
-            } catch (error) {
-                console.error('Error loading backup count:', error);
-            }
+            } catch (error) {}
             
             const systemStatus = document.getElementById('system-status');
             systemStatus.innerHTML = `
                 <div class="grid grid-3">
                     <div class="stat-card">
                         <div class="value">${currentConfig.maintenance ? 'ON' : 'OFF'}</div>
-                        <div class="label">Maintenance Mode</div>
+                        <div class="label">MAINTENANCE</div>
                     </div>
                     <div class="stat-card">
                         <div class="value">${currentConfig.update_available ? 'YES' : 'NO'}</div>
-                        <div class="label">Update Available</div>
+                        <div class="label">UPDATE</div>
                     </div>
                     <div class="stat-card">
                         <div class="value">${currentConfig.assets_version || 'N/A'}</div>
-                        <div class="label">Assets Version</div>
+                        <div class="label">VERSION</div>
                     </div>
                 </div>
             `;
@@ -1298,10 +1436,6 @@ MODERN_ADMIN_HTML = """
             document.getElementById('shizuku_logo_url').value = currentConfig.shizuku_logo_url || '';
             document.getElementById('freefire_logo_url').value = currentConfig.freefire_logo_url || '';
             document.getElementById('freefire_max_logo_url').value = currentConfig.freefire_max_logo_url || '';
-            document.getElementById('update_available').checked = currentConfig.update_available || false;
-            document.getElementById('update_version').value = currentConfig.update_version || '';
-            document.getElementById('update_url').value = currentConfig.update_url || '';
-            document.getElementById('update_changelog').value = currentConfig.update_changelog || '';
         }
         
         function populateMaintenance() {
@@ -1333,14 +1467,6 @@ MODERN_ADMIN_HTML = """
             await saveConfig();
         }
         
-        async function saveUpdate() {
-            currentConfig.update_available = document.getElementById('update_available').checked;
-            currentConfig.update_version = document.getElementById('update_version').value;
-            currentConfig.update_url = document.getElementById('update_url').value;
-            currentConfig.update_changelog = document.getElementById('update_changelog').value;
-            await saveConfig();
-        }
-        
         async function saveMaintenance() {
             currentConfig.maintenance = document.getElementById('maintenance').checked;
             currentConfig.root_maintenance = document.getElementById('root_maintenance').checked;
@@ -1357,7 +1483,12 @@ MODERN_ADMIN_HTML = """
             await saveConfig();
         }
         
-        async function toggleGlobalMaintenance() {
+        async function saveAssetsVersion() {
+            currentConfig.assets_version = document.getElementById('assets_version').value;
+            await saveConfig();
+        }
+        
+        async function toggleMaintenance() {
             currentConfig.maintenance = !currentConfig.maintenance;
             await saveConfig();
             await loadDashboard();
@@ -1380,10 +1511,10 @@ MODERN_ADMIN_HTML = """
                             <span class="badge ${btn.persist ? 'badge-info' : 'badge-danger'}">${btn.persist ? 'PERSIST' : 'NORMAL'}</span>
                         </div>
                         <div class="button-actions">
-                            <button class="btn btn-primary" onclick="editButton('${type}', ${index})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteButton('${type}', ${index})">Delete</button>
-                            <button class="btn btn-warning" onclick="toggleButton('${type}', ${index}, 'enabled')">${btn.enabled ? 'Disable' : 'Enable'}</button>
-                            <button class="btn btn-info" onclick="toggleButton('${type}', ${index}, 'maintenance')">${btn.maintenance ? 'Remove Maintenance' : 'Set Maintenance'}</button>
+                            <button class="btn btn-primary" onclick="editButton('${type}', ${index})">EDIT</button>
+                            <button class="btn btn-danger" onclick="deleteButton('${type}', ${index})">DELETE</button>
+                            <button class="btn btn-warning" onclick="toggleButton('${type}', ${index}, 'enabled')">${btn.enabled ? 'DISABLE' : 'ENABLE'}</button>
+                            <button class="btn btn-info" onclick="toggleButton('${type}', ${index}, 'maintenance')">${btn.maintenance ? 'REMOVE MAINT' : 'SET MAINT'}</button>
                         </div>
                     </div>
                 `;
@@ -1393,7 +1524,7 @@ MODERN_ADMIN_HTML = """
         function addButton(type) {
             editingType = type;
             editingIndex = null;
-            document.getElementById('modal-title').textContent = type === 'freefire_buttons' ? 'Add Free Fire Button' : 'Add Free Fire MAX Button';
+            document.getElementById('modal-title').textContent = type === 'freefire_buttons' ? 'ADD FREE FIRE BUTTON' : 'ADD FREE FIRE MAX BUTTON';
             document.getElementById('btn-id').value = '';
             document.getElementById('btn-name').value = '';
             document.getElementById('btn-url').value = '';
@@ -1408,7 +1539,7 @@ MODERN_ADMIN_HTML = """
             editingType = type;
             editingIndex = index;
             const btn = currentConfig[type][index];
-            document.getElementById('modal-title').textContent = 'Edit Button';
+            document.getElementById('modal-title').textContent = 'EDIT BUTTON';
             document.getElementById('btn-id').value = btn.id;
             document.getElementById('btn-name').value = btn.name;
             document.getElementById('btn-url').value = btn.url;
@@ -1444,7 +1575,7 @@ MODERN_ADMIN_HTML = """
         }
         
         async function deleteButton(type, index) {
-            if (confirm('Delete this button?')) {
+            if (confirm('DELETE THIS BUTTON?')) {
                 currentConfig[type].splice(index, 1);
                 await saveConfig();
                 loadButtons(type);
@@ -1468,14 +1599,14 @@ MODERN_ADMIN_HTML = """
                     <div class="card" style="margin-bottom: 12px;">
                         <h3>${lib.name}</h3>
                         <p><strong>ID:</strong> ${lib.id}</p>
-                        <p><strong>Path:</strong> ${lib.lib_path}</p>
+                        <p><strong>PATH:</strong> ${lib.lib_path}</p>
                         <div class="grid grid-2">
                             <span class="badge ${lib.enabled ? 'badge-success' : 'badge-danger'}">${lib.enabled ? 'ENABLED' : 'DISABLED'}</span>
                             <span class="badge ${lib.maintenance ? 'badge-warning' : 'badge-success'}">${lib.maintenance ? 'MAINTENANCE' : 'ACTIVE'}</span>
                         </div>
                         <div class="button-actions">
-                            <button class="btn btn-primary" onclick="editRootLib(${index})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteRootLib(${index})">Delete</button>
+                            <button class="btn btn-primary" onclick="editRootLib(${index})">EDIT</button>
+                            <button class="btn btn-danger" onclick="deleteRootLib(${index})">DELETE</button>
                         </div>
                     </div>
                 `;
@@ -1532,7 +1663,7 @@ MODERN_ADMIN_HTML = """
         }
         
         async function deleteRootLib(index) {
-            if (confirm('Delete this root library?')) {
+            if (confirm('DELETE THIS ROOT LIB?')) {
                 currentConfig.root_libs.splice(index, 1);
                 await saveConfig();
                 loadRootLibs();
@@ -1552,8 +1683,8 @@ MODERN_ADMIN_HTML = """
                         <h3>${asset.name}</h3>
                         <p><strong>URL:</strong> ${asset.url}</p>
                         <div class="button-actions">
-                            <button class="btn btn-primary" onclick="editAsset(${index})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteAsset(${index})">Delete</button>
+                            <button class="btn btn-primary" onclick="editAsset(${index})">EDIT</button>
+                            <button class="btn btn-danger" onclick="deleteAsset(${index})">DELETE</button>
                         </div>
                     </div>
                 `;
@@ -1595,16 +1726,11 @@ MODERN_ADMIN_HTML = """
         }
         
         async function deleteAsset(index) {
-            if (confirm('Delete this asset?')) {
+            if (confirm('DELETE THIS ASSET?')) {
                 currentConfig.assets.splice(index, 1);
                 await saveConfig();
                 loadAssets();
             }
-        }
-        
-        async function saveAssetsVersion() {
-            currentConfig.assets_version = document.getElementById('assets_version').value;
-            await saveConfig();
         }
         
         async function createBackup() {
@@ -1616,7 +1742,7 @@ MODERN_ADMIN_HTML = """
                 });
                 const data = await response.json();
                 if (data.success) {
-                    showToast('Backup created successfully');
+                    showToast('BACKUP CREATED');
                     loadBackups();
                 }
             } catch (error) {
@@ -1634,12 +1760,12 @@ MODERN_ADMIN_HTML = """
                 backups.forEach(backup => {
                     container.innerHTML += `
                         <div class="card" style="margin-bottom: 12px;">
-                            <h3>Backup #${backup.id}</h3>
-                            <p><strong>Created:</strong> ${backup.created_at}</p>
-                            <p><strong>Note:</strong> ${backup.note || 'N/A'}</p>
+                            <h3>BACKUP #${backup.id}</h3>
+                            <p><strong>CREATED:</strong> ${backup.created_at}</p>
+                            <p><strong>NOTE:</strong> ${backup.note || 'N/A'}</p>
                             <div class="button-actions">
-                                <button class="btn btn-primary" onclick="restoreBackup(${backup.id})">Restore</button>
-                                <button class="btn btn-danger" onclick="deleteBackup(${backup.id})">Delete</button>
+                                <button class="btn btn-primary" onclick="restoreBackup(${backup.id})">RESTORE</button>
+                                <button class="btn btn-danger" onclick="deleteBackup(${backup.id})">DELETE</button>
                             </div>
                         </div>
                     `;
@@ -1650,12 +1776,12 @@ MODERN_ADMIN_HTML = """
         }
         
         async function restoreBackup(id) {
-            if (confirm('Restore this backup?')) {
+            if (confirm('RESTORE THIS BACKUP?')) {
                 try {
                     const response = await fetch(`/api/admin/backup/${id}/restore`, {method: 'POST'});
                     const data = await response.json();
                     if (data.success) {
-                        showToast('Backup restored');
+                        showToast('BACKUP RESTORED');
                         await loadConfig();
                     }
                 } catch (error) {
@@ -1665,7 +1791,7 @@ MODERN_ADMIN_HTML = """
         }
         
         async function deleteBackup(id) {
-            if (confirm('Delete this backup?')) {
+            if (confirm('DELETE THIS BACKUP?')) {
                 try {
                     const response = await fetch(`/api/admin/backup/${id}`, {method: 'DELETE'});
                     const data = await response.json();
@@ -1689,9 +1815,9 @@ MODERN_ADMIN_HTML = """
                     container.innerHTML += `
                         <div class="log-entry">
                             <strong>${log.action}</strong>
-                            <p>Time: ${log.timestamp}</p>
+                            <p>TIME: ${log.timestamp}</p>
                             <p>IP: ${log.ip}</p>
-                            ${log.details ? `<p>Details: ${log.details}</p>` : ''}
+                            ${log.details ? `<p>DETAILS: ${log.details}</p>` : ''}
                         </div>
                     `;
                 });
@@ -1707,7 +1833,7 @@ MODERN_ADMIN_HTML = """
         
         function copyJson() {
             navigator.clipboard.writeText(JSON.stringify(currentConfig, null, 2))
-                .then(() => showToast('JSON copied to clipboard'));
+                .then(() => showToast('JSON COPIED'));
         }
         
         function downloadJson() {
@@ -1736,20 +1862,6 @@ MODERN_ADMIN_HTML = """
             document.getElementById('asset-modal').style.display = 'none';
         }
         
-        // Add animation styles
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-        
         // Initial load
         loadConfig();
     </script>
@@ -1757,6 +1869,7 @@ MODERN_ADMIN_HTML = """
 </html>
 """
 
+# Simple login page
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1764,7 +1877,7 @@ LOGIN_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HEX Protocol - Login</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -1773,8 +1886,8 @@ LOGIN_HTML = """
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background: #0a0e17;
+            font-family: 'Rajdhani', sans-serif;
+            background: #000010;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -1791,34 +1904,35 @@ LOGIN_HTML = """
             width: 100%;
             height: 100%;
             background: 
-                radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.2), transparent 50%),
-                radial-gradient(ellipse at bottom right, rgba(16, 185, 129, 0.15), transparent 50%);
+                radial-gradient(ellipse at top left, rgba(0, 255, 255, 0.2), transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(255, 0, 255, 0.15), transparent 50%);
             pointer-events: none;
         }
         
         .login-container {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(20, 20, 40, 0.9);
             backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
             border-radius: 20px;
             padding: 40px;
             width: 100%;
             max-width: 400px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 60px rgba(0, 255, 255, 0.2);
             position: relative;
             z-index: 1;
         }
         
         h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #8b5cf6, #10b981);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             text-align: center;
             margin-bottom: 30px;
-            letter-spacing: -0.5px;
+            letter-spacing: 2px;
         }
         
         .form-group {
@@ -1828,68 +1942,70 @@ LOGIN_HTML = """
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #9ca3af;
-            font-weight: 500;
-            font-size: 0.9rem;
+            color: #00ffff;
+            font-weight: 600;
+            letter-spacing: 1px;
         }
         
         .form-group input {
             width: 100%;
             padding: 14px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 255, 255, 0.3);
             border-radius: 10px;
-            color: #e5e7eb;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s;
+            font-family: 'Rajdhani', sans-serif;
         }
         
         .form-group input:focus {
             outline: none;
-            border-color: #8b5cf6;
-            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+            border-color: #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
         }
         
         button {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-            color: white;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            color: #000;
             border: none;
             border-radius: 10px;
             font-size: 1rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s;
-            margin-top: 10px;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 1px;
         }
         
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 255, 255, 0.4);
         }
         
         .error {
-            color: #ef4444;
+            color: #ff0044;
             text-align: center;
             margin-top: 15px;
-            font-size: 0.9rem;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <h1>HEX Protocol</h1>
+        <h1>HEX PROTOCOL</h1>
         <form id="login-form">
             <div class="form-group">
-                <label>Username</label>
+                <label>USERNAME</label>
                 <input type="text" id="username" required>
             </div>
             <div class="form-group">
-                <label>Password</label>
+                <label>PASSWORD</label>
                 <input type="password" id="password" required>
             </div>
-            <button type="submit">Login</button>
+            <button type="submit">LOGIN</button>
             <div class="error" id="error-message"></div>
         </form>
     </div>
@@ -1911,13 +2027,12 @@ LOGIN_HTML = """
                 const data = await response.json();
                 
                 if (data.success) {
-                    localStorage.setItem('admin_token', data.token);
                     window.location.href = '/admin';
                 } else {
-                    document.getElementById('error-message').textContent = 'Invalid credentials';
+                    document.getElementById('error-message').textContent = 'INVALID CREDENTIALS';
                 }
             } catch (error) {
-                document.getElementById('error-message').textContent = 'Login failed';
+                document.getElementById('error-message').textContent = 'LOGIN FAILED';
             }
         });
     </script>
@@ -1950,21 +2065,26 @@ async def admin_login_page():
 
 @app.post("/api/admin/login")
 async def admin_login(request: Request):
-    data = await request.json()
-    username = data.get("username")
-    password = data.get("password")
-    
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        token = create_session()
-        log_action("Admin login successful", request)
-        return {"success": True, "token": token}
-    
-    log_action("Admin login failed", request)
-    return {"success": False}
+    try:
+        data = await request.json()
+        username = data.get("username")
+        password = data.get("password")
+        
+        print(f"Login attempt: {username}")  # Debug log
+        
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            log_action("Admin login successful", request)
+            return {"success": True, "message": "Login successful"}
+        
+        log_action("Admin login failed", request)
+        return {"success": False, "message": "Invalid credentials"}
+    except Exception as e:
+        print(f"Login error: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_panel():
-    return MODERN_ADMIN_HTML
+    return FUTURISTIC_HTML
 
 @app.get("/api/admin/config")
 async def admin_get_config():
