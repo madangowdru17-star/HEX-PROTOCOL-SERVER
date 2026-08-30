@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 import uvicorn
@@ -15,8 +15,11 @@ import hashlib
 import time
 from fastapi.middleware.cors import CORSMiddleware
 import copy
+import asyncio
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-app = FastAPI(title="HEX Protocol System", version="6.0", docs_url="/api/docs", redoc_url="/api/redoc")
+app = FastAPI(title="HEX Protocol System", version="6.0", docs_url="/api/docs", redoc_url=None)
 
 # CORS middleware
 app.add_middleware(
@@ -33,6 +36,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "hexadmin2024")
 
 # Database setup
 DB_PATH = Path("config.db")
+CONFIG_FILE = Path("config.json")
 
 @contextmanager
 def get_db():
@@ -96,7 +100,7 @@ DEFAULT_CONFIG = {
     "freefire_logo_url": "https://i.ibb.co/nsqT2bjJ/Garena-Free-Fire-Icon.jpg",
     "freefire_max_logo_url": "https://i.ibb.co/Wv5pthbL/unnamed.webp",
     
-    "api_base_url": "https://key-system-production-1bc5.up.railway.app",
+    "api_base_url": "https://hex-protocol-server-production.up.railway.app",
     
     "update_available": False,
     "update_version": "2.1.0",
@@ -252,118 +256,97 @@ DEFAULT_CONFIG = {
             "arch": "arm",
             "enabled": True,
             "maintenance": False
-        },
-        {
-            "id": "root_aimbot",
-            "name": "Aimbot Module",
-            "url": "https://github.com/YOUR_USERNAME/YOUR_REPO/raw/main/libaimbot.so",
-            "lib_path": "lib/arm64-v8a/libaimbot.so",
-            "arch": "arm64",
-            "enabled": True,
-            "maintenance": False
-        },
-        {
-            "id": "root_esp",
-            "name": "ESP Module",
-            "url": "https://github.com/YOUR_USERNAME/YOUR_REPO/raw/main/libesp.so",
-            "lib_path": "lib/arm64-v8a/libesp.so",
-            "arch": "arm64",
-            "enabled": True,
-            "maintenance": False
         }
     ]
 }
 
-CONFIG_FILE = Path("config.json")
-
 def load_config():
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    else:
-        save_config(DEFAULT_CONFIG)
+    """Load configuration from file with error handling"""
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                # Ensure all keys exist
+                for key, value in DEFAULT_CONFIG.items():
+                    if key not in config:
+                        config[key] = value
+                return config
+        else:
+            save_config(DEFAULT_CONFIG)
+            return copy.deepcopy(DEFAULT_CONFIG)
+    except Exception as e:
+        print(f"Error loading config: {e}")
         return copy.deepcopy(DEFAULT_CONFIG)
 
 def save_config(config):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+    """Save configuration to file with error handling"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving config: {e}")
+        return False
 
 def log_action(action: str, request: Request = None, details: str = ""):
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO audit_log (action, timestamp, ip, details) VALUES (?, ?, ?, ?)",
-            (action, datetime.now().isoformat(), request.client.host if request else "system", details)
-        )
-        conn.commit()
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO audit_log (action, timestamp, ip, details) VALUES (?, ?, ?, ?)",
+                (action, datetime.now().isoformat(), request.client.host if request else "system", details)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error logging action: {e}")
 
 def create_backup(note: str = ""):
-    config = load_config()
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO backups (config_data, created_at, note) VALUES (?, ?, ?)",
-            (json.dumps(config), datetime.now().isoformat(), note)
-        )
-        conn.commit()
+    try:
+        config = load_config()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO backups (config_data, created_at, note) VALUES (?, ?, ?)",
+                (json.dumps(config), datetime.now().isoformat(), note)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error creating backup: {e}")
+        return False
 
-def verify_admin(credentials: HTTPBasicCredentials = Depends(HTTPBasic())):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-def create_session():
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now() + timedelta(hours=24)
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)",
-            (token, datetime.now().isoformat(), expires.isoformat())
-        )
-        conn.commit()
-    return token
-
-def verify_session(token: str):
-    with get_db() as conn:
-        session = conn.execute(
-            "SELECT * FROM sessions WHERE token = ? AND expires_at > ?",
-            (token, datetime.now().isoformat())
-        ).fetchone()
-        return session is not None
-
-# Premium Admin Panel HTML
-PREMIUM_ADMIN_HTML = """
+# Modern Admin Panel HTML with Glassmorphism
+MODERN_ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HEX Protocol Control Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #1a1a2e;
-            --bg-card: #16213e;
-            --bg-hover: #1e2a4a;
-            --text-primary: #ffffff;
-            --text-secondary: #b0b0c0;
-            --text-muted: #707080;
-            --accent: #00ff88;
-            --accent-hover: #00cc6a;
-            --accent-glow: rgba(0, 255, 136, 0.3);
-            --danger: #ff4444;
-            --danger-hover: #cc0000;
-            --warning: #ffaa00;
-            --info: #0088ff;
-            --border: #2a2a3e;
-            --border-light: #3a3a5e;
-            --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            --radius: 12px;
+            --bg: #0a0e17;
+            --surface: rgba(255, 255, 255, 0.03);
+            --surface-hover: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --text: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --primary-glow: rgba(139, 92, 246, 0.3);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.3);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.3);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.3);
+            --info: #3b82f6;
+            --info-glow: rgba(59, 130, 246, 0.3);
+            --radius: 16px;
             --radius-sm: 8px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         * {
@@ -373,106 +356,168 @@ PREMIUM_ADMIN_HTML = """
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             line-height: 1.6;
             min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.15), transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(16, 185, 129, 0.1), transparent 50%),
+                radial-gradient(ellipse at center, rgba(59, 130, 246, 0.05), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
         }
         
         .container {
-            max-width: 1600px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 24px;
+            position: relative;
+            z-index: 1;
         }
         
         .header {
-            background: linear-gradient(135deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%);
-            padding: 30px;
+            background: var(--surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
-            margin-bottom: 30px;
-            border: 1px solid var(--border);
+            padding: 32px;
+            margin-bottom: 24px;
             box-shadow: var(--shadow);
-        }
-        
-        .header h1 {
-            font-size: 2.5em;
-            background: linear-gradient(135deg, var(--accent) 0%, #00ffcc 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
-        
-        .header p {
-            color: var(--text-secondary);
-            font-size: 1.1em;
-        }
-        
-        .nav-tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: var(--bg-primary);
-            padding: 10px 0;
-        }
-        
-        .nav-tab {
-            padding: 12px 24px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 0.3s;
-            color: var(--text-primary);
-            font-weight: 500;
             position: relative;
             overflow: hidden;
         }
         
-        .nav-tab:hover {
-            background: var(--bg-hover);
-            border-color: var(--accent);
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--success), var(--info));
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #8b5cf6, #10b981, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+        
+        .nav {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 16px;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.8);
+            backdrop-filter: blur(20px);
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+        
+        .nav-item {
+            padding: 10px 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+        
+        .nav-item:hover {
+            background: var(--surface-hover);
+            border-color: var(--border-hover);
+            color: var(--text);
             transform: translateY(-2px);
         }
         
-        .nav-tab.active {
-            background: var(--accent);
-            color: var(--bg-primary);
-            border-color: var(--accent);
-            box-shadow: 0 5px 20px var(--accent-glow);
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 16px var(--primary-glow);
         }
         
         .card {
-            background: var(--bg-secondary);
-            border-radius: var(--radius);
-            padding: 25px;
-            margin-bottom: 20px;
+            background: var(--surface);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            transition: all 0.3s;
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 20px;
             box-shadow: var(--shadow);
+            transition: var(--transition);
         }
         
         .card:hover {
-            border-color: var(--border-light);
+            border-color: var(--border-hover);
             transform: translateY(-2px);
         }
         
         .card h2 {
-            color: var(--accent);
+            font-size: 1.5rem;
+            font-weight: 700;
             margin-bottom: 20px;
-            font-size: 1.5em;
+            color: var(--text);
+            letter-spacing: -0.3px;
         }
         
         .card h3 {
-            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 600;
             margin-bottom: 15px;
-            font-size: 1.2em;
+            color: var(--text);
+        }
+        
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        
+        @media (max-width: 1024px) {
+            .grid-4 { grid-template-columns: repeat(2, 1fr); }
+        }
+        
+        @media (max-width: 768px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.8rem; }
+            .nav { padding: 8px; }
+            .nav-item { padding: 8px 16px; font-size: 0.8rem; }
         }
         
         .form-group {
@@ -484,7 +529,7 @@ PREMIUM_ADMIN_HTML = """
             margin-bottom: 8px;
             color: var(--text-secondary);
             font-weight: 500;
-            font-size: 0.9em;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -493,21 +538,22 @@ PREMIUM_ADMIN_HTML = """
         .form-group textarea,
         .form-group select {
             width: 100%;
-            padding: 12px;
-            background: var(--bg-primary);
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.3);
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            color: var(--text-primary);
-            font-size: 14px;
-            transition: all 0.3s;
+            color: var(--text);
+            font-size: 0.95rem;
+            transition: var(--transition);
+            font-family: 'Inter', sans-serif;
         }
         
         .form-group input:focus,
         .form-group textarea:focus,
         .form-group select:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
         }
         
         .form-group textarea {
@@ -519,54 +565,63 @@ PREMIUM_ADMIN_HTML = """
             padding: 12px 24px;
             border: none;
             border-radius: var(--radius-sm);
-            font-size: 14px;
+            font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-family: 'Inter', sans-serif;
         }
         
         .btn-primary {
-            background: var(--accent);
-            color: var(--bg-primary);
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: white;
         }
         
         .btn-primary:hover {
-            background: var(--accent-hover);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px var(--accent-glow);
+            box-shadow: 0 8px 24px var(--primary-glow);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px var(--success-glow);
         }
         
         .btn-danger {
-            background: var(--danger);
+            background: linear-gradient(135deg, var(--danger), #dc2626);
             color: white;
         }
         
         .btn-danger:hover {
-            background: var(--danger-hover);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(255, 68, 68, 0.3);
+            box-shadow: 0 8px 24px var(--danger-glow);
         }
         
         .btn-warning {
-            background: var(--warning);
-            color: var(--bg-primary);
-        }
-        
-        .btn-info {
-            background: var(--info);
+            background: linear-gradient(135deg, var(--warning), #d97706);
             color: white;
         }
         
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 34px;
+        .btn-info {
+            background: linear-gradient(135deg, var(--info), #2563eb);
+            color: white;
         }
         
-        .toggle-switch input {
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+        
+        .toggle input {
             opacity: 0;
             width: 0;
             height: 0;
@@ -579,111 +634,94 @@ PREMIUM_ADMIN_HTML = """
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 34px;
+            background: rgba(255, 255, 255, 0.1);
+            transition: var(--transition);
+            border-radius: 28px;
         }
         
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 26px;
-            width: 26px;
+            height: 20px;
+            width: 20px;
             left: 4px;
             bottom: 4px;
-            background-color: white;
-            transition: .4s;
+            background: white;
+            transition: var(--transition);
             border-radius: 50%;
         }
         
-        input:checked + .toggle-slider {
-            background-color: var(--accent);
+        .toggle input:checked + .toggle-slider {
+            background: var(--primary);
         }
         
-        input:checked + .toggle-slider:before {
-            transform: translateX(26px);
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(22px);
         }
         
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        
-        .table th,
-        .table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .table th {
-            background: var(--bg-card);
-            color: var(--accent);
-            font-weight: 600;
-        }
-        
-        .table tr:hover {
-            background: var(--bg-hover);
-        }
-        
-        .status-badge {
-            padding: 5px 10px;
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 0.75rem;
             font-weight: 600;
+            letter-spacing: 0.5px;
         }
         
-        .status-active {
-            background: rgba(0, 255, 136, 0.1);
-            color: var(--accent);
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
         }
         
-        .status-inactive {
-            background: rgba(255, 68, 68, 0.1);
+        .badge-danger {
+            background: rgba(239, 68, 68, 0.1);
             color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
         }
         
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.2);
         }
         
-        .grid-3 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
+        .badge-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+            border: 1px solid rgba(59, 130, 246, 0.2);
         }
         
-        .grid-4 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .grid-2,
-            .grid-3,
-            .grid-4 {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 1.8em;
-            }
-        }
-        
-        .json-viewer {
-            background: var(--bg-primary);
-            padding: 20px;
-            border-radius: var(--radius-sm);
-            overflow: auto;
-            max-height: 600px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.5;
+        .stat-card {
+            background: var(--surface);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            text-align: center;
+            transition: var(--transition);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-hover);
+            box-shadow: var(--shadow);
+        }
+        
+        .stat-card .value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--text), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+        
+        .stat-card .label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
         }
         
         .modal {
@@ -694,81 +732,66 @@ PREMIUM_ADMIN_HTML = """
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(5px);
         }
         
         .modal-content {
-            background: var(--bg-secondary);
-            padding: 30px;
+            background: var(--bg);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
+            padding: 32px;
             max-width: 600px;
             width: 90%;
-            border: 1px solid var(--border);
             box-shadow: var(--shadow);
             max-height: 90vh;
             overflow-y: auto;
         }
         
         .modal-content h3 {
-            color: var(--accent);
-            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .json-viewer {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            overflow: auto;
+            max-height: 600px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: var(--text);
         }
         
         .log-entry {
-            padding: 10px;
-            border-left: 3px solid var(--accent);
-            margin-bottom: 10px;
-            background: var(--bg-primary);
+            padding: 16px;
+            border-left: 3px solid var(--primary);
+            margin-bottom: 12px;
+            background: rgba(0, 0, 0, 0.2);
             border-radius: var(--radius-sm);
         }
         
-        .quick-action {
-            display: inline-block;
-            padding: 8px 16px;
-            margin: 5px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .quick-action:hover {
-            background: var(--bg-hover);
-            border-color: var(--accent);
-        }
-        
-        .stats-card {
-            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
-            padding: 20px;
-            border-radius: var(--radius);
-            text-align: center;
-            border: 1px solid var(--border);
-        }
-        
-        .stats-card .number {
-            font-size: 2em;
-            font-weight: 700;
-            color: var(--accent);
-        }
-        
-        .stats-card .label {
-            color: var(--text-secondary);
-            font-size: 0.9em;
-        }
-        
-        .backup-item {
-            padding: 15px;
-            background: var(--bg-primary);
-            border-radius: var(--radius-sm);
-            margin-bottom: 10px;
-            border: 1px solid var(--border);
+        .button-actions {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        
+        .quick-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
         }
     </style>
 </head>
@@ -779,48 +802,47 @@ PREMIUM_ADMIN_HTML = """
             <p>Premium Configuration Management System</p>
         </div>
         
-        <div class="nav-tabs">
-            <div class="nav-tab active" onclick="showTab('dashboard')">Dashboard</div>
-            <div class="nav-tab" onclick="showTab('general')">General</div>
-            <div class="nav-tab" onclick="showTab('maintenance')">Maintenance</div>
-            <div class="nav-tab" onclick="showTab('freefire')">Free Fire</div>
-            <div class="nav-tab" onclick="showTab('freefire_max')">FF MAX</div>
-            <div class="nav-tab" onclick="showTab('buttons')">Buttons</div>
-            <div class="nav-tab" onclick="showTab('root_libs')">Root Libs</div>
-            <div class="nav-tab" onclick="showTab('assets')">Assets</div>
-            <div class="nav-tab" onclick="showTab('api')">API Config</div>
-            <div class="nav-tab" onclick="showTab('backups')">Backups</div>
-            <div class="nav-tab" onclick="showTab('logs')">Logs</div>
-            <div class="nav-tab" onclick="showTab('json')">JSON View</div>
+        <div class="nav">
+            <div class="nav-item active" onclick="showTab('dashboard')">Dashboard</div>
+            <div class="nav-item" onclick="showTab('general')">General</div>
+            <div class="nav-item" onclick="showTab('maintenance')">Maintenance</div>
+            <div class="nav-item" onclick="showTab('freefire')">Free Fire</div>
+            <div class="nav-item" onclick="showTab('ffmax')">FF MAX</div>
+            <div class="nav-item" onclick="showTab('rootlibs')">Root Libs</div>
+            <div class="nav-item" onclick="showTab('assets')">Assets</div>
+            <div class="nav-item" onclick="showTab('api')">API</div>
+            <div class="nav-item" onclick="showTab('backups')">Backups</div>
+            <div class="nav-item" onclick="showTab('logs')">Logs</div>
+            <div class="nav-item" onclick="showTab('json')">JSON</div>
         </div>
         
         <div id="dashboard" class="tab-content">
-            <div class="grid-4">
-                <div class="stats-card">
-                    <div class="number" id="stat-buttons">0</div>
+            <div class="grid grid-4">
+                <div class="stat-card">
+                    <div class="value" id="stat-buttons">0</div>
                     <div class="label">Total Buttons</div>
                 </div>
-                <div class="stats-card">
-                    <div class="number" id="stat-rootlibs">0</div>
+                <div class="stat-card">
+                    <div class="value" id="stat-rootlibs">0</div>
                     <div class="label">Root Libraries</div>
                 </div>
-                <div class="stats-card">
-                    <div class="number" id="stat-assets">0</div>
+                <div class="stat-card">
+                    <div class="value" id="stat-assets">0</div>
                     <div class="label">Assets</div>
                 </div>
-                <div class="stats-card">
-                    <div class="number" id="stat-backups">0</div>
+                <div class="stat-card">
+                    <div class="value" id="stat-backups">0</div>
                     <div class="label">Backups</div>
                 </div>
             </div>
             
             <div class="card">
                 <h2>Quick Actions</h2>
-                <div>
-                    <button class="quick-action" onclick="toggleMaintenance()">Toggle Maintenance</button>
-                    <button class="quick-action" onclick="createBackup()">Create Backup</button>
-                    <button class="quick-action" onclick="exportConfig()">Export Config</button>
-                    <button class="quick-action" onclick="location.reload()">Refresh</button>
+                <div class="quick-actions">
+                    <button class="btn btn-primary" onclick="toggleGlobalMaintenance()">Toggle Maintenance</button>
+                    <button class="btn btn-success" onclick="createBackup()">Create Backup</button>
+                    <button class="btn btn-info" onclick="exportConfig()">Export Config</button>
+                    <button class="btn btn-warning" onclick="location.reload()">Refresh</button>
                 </div>
             </div>
             
@@ -833,121 +855,118 @@ PREMIUM_ADMIN_HTML = """
         <div id="general" class="tab-content" style="display:none;">
             <div class="card">
                 <h2>General Configuration</h2>
-                <form id="general-form">
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>App Name</label>
-                            <input type="text" id="app_name" name="app_name">
-                        </div>
-                        <div class="form-group">
-                            <label>Login Name</label>
-                            <input type="text" id="login_name" name="login_name">
-                        </div>
-                    </div>
-                    
+                <div class="grid grid-2">
                     <div class="form-group">
-                        <label>Maintenance Message</label>
-                        <textarea id="maintenance_message" name="maintenance_message"></textarea>
+                        <label>App Name</label>
+                        <input type="text" id="app_name">
                     </div>
-                    
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Telegram Link</label>
-                            <input type="text" id="telegram_link" name="telegram_link">
-                        </div>
-                        <div class="form-group">
-                            <label>Get Key Link</label>
-                            <input type="text" id="get_key_link" name="get_key_link">
-                        </div>
+                    <div class="form-group">
+                        <label>Login Name</label>
+                        <input type="text" id="login_name">
                     </div>
-                    
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Logo URL</label>
-                            <input type="text" id="logo_url" name="logo_url">
-                        </div>
-                        <div class="form-group">
-                            <label>Shizuku Logo URL</label>
-                            <input type="text" id="shizuku_logo_url" name="shizuku_logo_url">
-                        </div>
+                </div>
+                <div class="form-group">
+                    <label>Maintenance Message</label>
+                    <textarea id="maintenance_message"></textarea>
+                </div>
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label>Telegram Link</label>
+                        <input type="text" id="telegram_link">
                     </div>
-                    
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Free Fire Logo URL</label>
-                            <input type="text" id="freefire_logo_url" name="freefire_logo_url">
-                        </div>
-                        <div class="form-group">
-                            <label>Free Fire MAX Logo URL</label>
-                            <input type="text" id="freefire_max_logo_url" name="freefire_max_logo_url">
-                        </div>
+                    <div class="form-group">
+                        <label>Get Key Link</label>
+                        <input type="text" id="get_key_link">
                     </div>
-                    
-                    <button type="submit" class="btn btn-primary">Save General Settings</button>
-                </form>
+                </div>
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label>Logo URL</label>
+                        <input type="text" id="logo_url">
+                    </div>
+                    <div class="form-group">
+                        <label>Shizuku Logo URL</label>
+                        <input type="text" id="shizuku_logo_url">
+                    </div>
+                </div>
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label>Free Fire Logo URL</label>
+                        <input type="text" id="freefire_logo_url">
+                    </div>
+                    <div class="form-group">
+                        <label>Free Fire MAX Logo URL</label>
+                        <input type="text" id="freefire_max_logo_url">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="saveGeneral()">Save Settings</button>
             </div>
             
             <div class="card">
                 <h2>Update Configuration</h2>
-                <form id="update-form">
+                <div class="form-group">
+                    <label class="toggle">
+                        <input type="checkbox" id="update_available">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span style="margin-left: 12px;">Update Available</span>
+                </div>
+                <div class="grid grid-2">
                     <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="update_available">
-                            Update Available
-                        </label>
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>Update Version</label>
-                            <input type="text" id="update_version">
-                        </div>
-                        <div class="form-group">
-                            <label>Update URL</label>
-                            <input type="text" id="update_url">
-                        </div>
+                        <label>Update Version</label>
+                        <input type="text" id="update_version">
                     </div>
                     <div class="form-group">
-                        <label>Update Changelog</label>
-                        <textarea id="update_changelog"></textarea>
+                        <label>Update URL</label>
+                        <input type="text" id="update_url">
                     </div>
-                    <button type="submit" class="btn btn-primary">Save Update Settings</button>
-                </form>
+                </div>
+                <div class="form-group">
+                    <label>Update Changelog</label>
+                    <textarea id="update_changelog"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="saveUpdate()">Save Update Settings</button>
             </div>
         </div>
         
         <div id="maintenance" class="tab-content" style="display:none;">
             <div class="card">
                 <h2>Maintenance Control</h2>
-                <div class="grid-2">
+                <div class="grid grid-2">
                     <div class="form-group">
-                        <label>
+                        <label class="toggle">
                             <input type="checkbox" id="maintenance">
-                            Global Maintenance
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="margin-left: 12px;">Global Maintenance</span>
                     </div>
                     <div class="form-group">
-                        <label>
+                        <label class="toggle">
                             <input type="checkbox" id="root_maintenance">
-                            Root Maintenance
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="margin-left: 12px;">Root Maintenance</span>
                     </div>
                     <div class="form-group">
-                        <label>
+                        <label class="toggle">
                             <input type="checkbox" id="nonroot_maintenance">
-                            Non-Root Maintenance
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="margin-left: 12px;">Non-Root Maintenance</span>
                     </div>
                     <div class="form-group">
-                        <label>
+                        <label class="toggle">
                             <input type="checkbox" id="freefire_maintenance">
-                            Free Fire Maintenance
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="margin-left: 12px;">Free Fire Maintenance</span>
                     </div>
                     <div class="form-group">
-                        <label>
+                        <label class="toggle">
                             <input type="checkbox" id="freefire_max_maintenance">
-                            Free Fire MAX Maintenance
+                            <span class="toggle-slider"></span>
                         </label>
+                        <span style="margin-left: 12px;">Free Fire MAX Maintenance</span>
                     </div>
                 </div>
                 <button class="btn btn-primary" onclick="saveMaintenance()">Save Maintenance Settings</button>
@@ -956,31 +975,24 @@ PREMIUM_ADMIN_HTML = """
         
         <div id="freefire" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Free Fire Buttons Management</h2>
-                <div id="freefire-buttons-list"></div>
-                <button class="btn btn-primary" onclick="addButton('freefire')">Add Free Fire Button</button>
+                <h2>Free Fire Buttons</h2>
+                <div id="freefire-buttons"></div>
+                <button class="btn btn-primary" onclick="addButton('freefire_buttons')">Add Button</button>
             </div>
         </div>
         
-        <div id="freefire_max" class="tab-content" style="display:none;">
+        <div id="ffmax" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>Free Fire MAX Buttons Management</h2>
-                <div id="freefire-max-buttons-list"></div>
-                <button class="btn btn-primary" onclick="addButton('freefire_max')">Add Free Fire MAX Button</button>
+                <h2>Free Fire MAX Buttons</h2>
+                <div id="ffmax-buttons"></div>
+                <button class="btn btn-primary" onclick="addButton('freefire_max_buttons')">Add Button</button>
             </div>
         </div>
         
-        <div id="buttons" class="tab-content" style="display:none;">
+        <div id="rootlibs" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>All Buttons Overview</h2>
-                <div id="all-buttons-list"></div>
-            </div>
-        </div>
-        
-        <div id="root_libs" class="tab-content" style="display:none;">
-            <div class="card">
-                <h2>Root Libraries Management</h2>
-                <div id="root-libs-list"></div>
+                <h2>Root Libraries</h2>
+                <div id="rootlibs-list"></div>
                 <button class="btn btn-primary" onclick="addRootLib()">Add Root Library</button>
             </div>
         </div>
@@ -994,7 +1006,7 @@ PREMIUM_ADMIN_HTML = """
                 </div>
                 <div id="assets-list"></div>
                 <button class="btn btn-primary" onclick="addAsset()">Add Asset</button>
-                <button class="btn btn-primary" onclick="saveAssetsVersion()">Save Assets Version</button>
+                <button class="btn btn-primary" onclick="saveAssetsVersion()">Save Version</button>
             </div>
         </div>
         
@@ -1020,8 +1032,8 @@ PREMIUM_ADMIN_HTML = """
         <div id="backups" class="tab-content" style="display:none;">
             <div class="card">
                 <h2>Configuration Backups</h2>
-                <button class="btn btn-primary" onclick="createBackup()">Create New Backup</button>
-                <div id="backups-list"></div>
+                <button class="btn btn-success" onclick="createBackup()">Create New Backup</button>
+                <div id="backups-list" style="margin-top: 20px;"></div>
             </div>
         </div>
         
@@ -1034,11 +1046,13 @@ PREMIUM_ADMIN_HTML = """
         
         <div id="json" class="tab-content" style="display:none;">
             <div class="card">
-                <h2>JSON Configuration Viewer</h2>
-                <button class="btn btn-primary" onclick="refreshJsonView()">Refresh</button>
-                <button class="btn btn-primary" onclick="copyJson()">Copy JSON</button>
-                <button class="btn btn-primary" onclick="downloadJson()">Download JSON</button>
-                <div class="json-viewer" id="json-viewer"></div>
+                <h2>JSON Configuration</h2>
+                <div class="button-actions">
+                    <button class="btn btn-primary" onclick="refreshJson()">Refresh</button>
+                    <button class="btn btn-success" onclick="copyJson()">Copy</button>
+                    <button class="btn btn-info" onclick="downloadJson()">Download</button>
+                </div>
+                <div class="json-viewer" id="json-viewer" style="margin-top: 20px;"></div>
             </div>
         </div>
     </div>
@@ -1062,28 +1076,33 @@ PREMIUM_ADMIN_HTML = """
                 <label>Key URL</label>
                 <input type="text" id="btn-key-url">
             </div>
-            <div class="grid-3">
+            <div class="grid grid-3">
                 <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="btn-enabled">
-                        Enabled
+                    <label class="toggle">
+                        <input type="checkbox" id="btn-enabled" checked>
+                        <span class="toggle-slider"></span>
                     </label>
+                    <span style="margin-left: 12px;">Enabled</span>
                 </div>
                 <div class="form-group">
-                    <label>
+                    <label class="toggle">
                         <input type="checkbox" id="btn-maintenance">
-                        Maintenance
+                        <span class="toggle-slider"></span>
                     </label>
+                    <span style="margin-left: 12px;">Maintenance</span>
                 </div>
                 <div class="form-group">
-                    <label>
+                    <label class="toggle">
                         <input type="checkbox" id="btn-persist">
-                        Persist
+                        <span class="toggle-slider"></span>
                     </label>
+                    <span style="margin-left: 12px;">Persist</span>
                 </div>
             </div>
-            <button class="btn btn-primary" onclick="saveButton()">Save</button>
-            <button class="btn btn-danger" onclick="closeModal()">Cancel</button>
+            <div class="button-actions">
+                <button class="btn btn-primary" onclick="saveButton()">Save</button>
+                <button class="btn btn-danger" onclick="closeModal()">Cancel</button>
+            </div>
         </div>
     </div>
     
@@ -1115,22 +1134,26 @@ PREMIUM_ADMIN_HTML = """
                     <option value="x86_64">x86_64</option>
                 </select>
             </div>
-            <div class="grid-2">
+            <div class="grid grid-2">
                 <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="lib-enabled">
-                        Enabled
+                    <label class="toggle">
+                        <input type="checkbox" id="lib-enabled" checked>
+                        <span class="toggle-slider"></span>
                     </label>
+                    <span style="margin-left: 12px;">Enabled</span>
                 </div>
                 <div class="form-group">
-                    <label>
+                    <label class="toggle">
                         <input type="checkbox" id="lib-maintenance">
-                        Maintenance
+                        <span class="toggle-slider"></span>
                     </label>
+                    <span style="margin-left: 12px;">Maintenance</span>
                 </div>
             </div>
-            <button class="btn btn-primary" onclick="saveRootLib()">Save</button>
-            <button class="btn btn-danger" onclick="closeRootLibModal()">Cancel</button>
+            <div class="button-actions">
+                <button class="btn btn-primary" onclick="saveRootLib()">Save</button>
+                <button class="btn btn-danger" onclick="closeRootLibModal()">Cancel</button>
+            </div>
         </div>
     </div>
     
@@ -1145,218 +1168,232 @@ PREMIUM_ADMIN_HTML = """
                 <label>Asset URL</label>
                 <input type="text" id="asset-url">
             </div>
-            <button class="btn btn-primary" onclick="saveAsset()">Save</button>
-            <button class="btn btn-danger" onclick="closeAssetModal()">Cancel</button>
+            <div class="button-actions">
+                <button class="btn btn-primary" onclick="saveAsset()">Save</button>
+                <button class="btn btn-danger" onclick="closeAssetModal()">Cancel</button>
+            </div>
         </div>
     </div>
     
     <script>
         let currentConfig = null;
-        let editingButtonType = null;
-        let editingButtonIndex = null;
-        let editingRootLibIndex = null;
-        let editingAssetIndex = null;
+        let editingType = null;
+        let editingIndex = null;
         
         function showTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             document.getElementById(tabName).style.display = 'block';
             event.target.classList.add('active');
             
             switch(tabName) {
-                case 'dashboard':
-                    loadDashboard();
-                    break;
-                case 'freefire':
-                    loadFreeFireButtons();
-                    break;
-                case 'freefire_max':
-                    loadFreeFireMaxButtons();
-                    break;
-                case 'buttons':
-                    loadAllButtons();
-                    break;
-                case 'root_libs':
-                    loadRootLibs();
-                    break;
-                case 'assets':
-                    loadAssets();
-                    break;
-                case 'backups':
-                    loadBackups();
-                    break;
-                case 'logs':
-                    loadLogs();
-                    break;
-                case 'json':
-                    refreshJsonView();
-                    break;
+                case 'dashboard': loadDashboard(); break;
+                case 'general': populateGeneral(); break;
+                case 'maintenance': populateMaintenance(); break;
+                case 'freefire': loadButtons('freefire_buttons'); break;
+                case 'ffmax': loadButtons('freefire_max_buttons'); break;
+                case 'rootlibs': loadRootLibs(); break;
+                case 'assets': loadAssets(); break;
+                case 'api': populateApi(); break;
+                case 'backups': loadBackups(); break;
+                case 'logs': loadLogs(); break;
+                case 'json': refreshJson(); break;
             }
         }
         
-        function loadConfig() {
-            fetch('/api/admin/config')
-                .then(response => response.json())
-                .then(data => {
-                    currentConfig = data;
-                    populateForms(data);
-                    updateDashboard(data);
-                })
-                .catch(error => console.error('Error loading config:', error));
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/admin/config');
+                currentConfig = await response.json();
+                return currentConfig;
+            } catch (error) {
+                console.error('Error loading config:', error);
+                return null;
+            }
         }
         
-        function populateForms(config) {
-            // General settings
-            document.getElementById('app_name').value = config.app_name || '';
-            document.getElementById('login_name').value = config.login_name || '';
-            document.getElementById('maintenance_message').value = config.maintenance_message || '';
-            document.getElementById('telegram_link').value = config.telegram_link || '';
-            document.getElementById('get_key_link').value = config.get_key_link || '';
-            document.getElementById('logo_url').value = config.logo_url || '';
-            document.getElementById('shizuku_logo_url').value = config.shizuku_logo_url || '';
-            document.getElementById('freefire_logo_url').value = config.freefire_logo_url || '';
-            document.getElementById('freefire_max_logo_url').value = config.freefire_max_logo_url || '';
-            
-            // Update settings
-            document.getElementById('update_available').checked = config.update_available || false;
-            document.getElementById('update_version').value = config.update_version || '';
-            document.getElementById('update_url').value = config.update_url || '';
-            document.getElementById('update_changelog').value = config.update_changelog || '';
-            
-            // Maintenance
-            document.getElementById('maintenance').checked = config.maintenance || false;
-            document.getElementById('root_maintenance').checked = config.root_maintenance || false;
-            document.getElementById('nonroot_maintenance').checked = config.nonroot_maintenance || false;
-            document.getElementById('freefire_maintenance').checked = config.freefire_maintenance || false;
-            document.getElementById('freefire_max_maintenance').checked = config.freefire_max_maintenance || false;
-            
-            // API config
-            document.getElementById('api_base_url').value = config.api_base_url || '';
-            document.getElementById('master_key').value = config.master_key || '';
-            document.getElementById('master_key_expiry').value = config.master_key_expiry ? config.master_key_expiry.slice(0, 16) : '';
-            
-            // Assets
-            document.getElementById('assets_version').value = config.assets_version || '';
+        async function saveConfig() {
+            try {
+                const response = await fetch('/api/admin/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(currentConfig)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Configuration saved successfully');
+                }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                showToast('Error saving configuration', 'error');
+            }
         }
         
-        function updateDashboard(config) {
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 16px 24px;
+                background: ${type === 'success' ? 'var(--success)' : 'var(--danger)'};
+                color: white;
+                border-radius: 8px;
+                font-weight: 600;
+                z-index: 2000;
+                animation: slideIn 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+        }
+        
+        async function loadDashboard() {
+            await loadConfig();
+            if (!currentConfig) return;
+            
             document.getElementById('stat-buttons').textContent = 
-                (config.freefire_buttons?.length || 0) + (config.freefire_max_buttons?.length || 0);
-            document.getElementById('stat-rootlibs').textContent = config.root_libs?.length || 0;
-            document.getElementById('stat-assets').textContent = config.assets?.length || 0;
+                (currentConfig.freefire_buttons?.length || 0) + (currentConfig.freefire_max_buttons?.length || 0);
+            document.getElementById('stat-rootlibs').textContent = currentConfig.root_libs?.length || 0;
+            document.getElementById('stat-assets').textContent = currentConfig.assets?.length || 0;
+            
+            try {
+                const response = await fetch('/api/admin/backups/count');
+                const data = await response.json();
+                document.getElementById('stat-backups').textContent = data.count || 0;
+            } catch (error) {
+                console.error('Error loading backup count:', error);
+            }
             
             const systemStatus = document.getElementById('system-status');
             systemStatus.innerHTML = `
-                <div class="grid-3">
-                    <div class="stats-card">
-                        <div class="number">${config.maintenance ? 'ON' : 'OFF'}</div>
+                <div class="grid grid-3">
+                    <div class="stat-card">
+                        <div class="value">${currentConfig.maintenance ? 'ON' : 'OFF'}</div>
                         <div class="label">Maintenance Mode</div>
                     </div>
-                    <div class="stats-card">
-                        <div class="number">${config.update_available ? 'YES' : 'NO'}</div>
+                    <div class="stat-card">
+                        <div class="value">${currentConfig.update_available ? 'YES' : 'NO'}</div>
                         <div class="label">Update Available</div>
                     </div>
-                    <div class="stats-card">
-                        <div class="number">${config.assets_version || 'N/A'}</div>
+                    <div class="stat-card">
+                        <div class="value">${currentConfig.assets_version || 'N/A'}</div>
                         <div class="label">Assets Version</div>
                     </div>
                 </div>
             `;
         }
         
-        function loadDashboard() {
-            loadConfig();
-            fetch('/api/admin/backups/count')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('stat-backups').textContent = data.count || 0;
-                });
+        function populateGeneral() {
+            if (!currentConfig) return;
+            document.getElementById('app_name').value = currentConfig.app_name || '';
+            document.getElementById('login_name').value = currentConfig.login_name || '';
+            document.getElementById('maintenance_message').value = currentConfig.maintenance_message || '';
+            document.getElementById('telegram_link').value = currentConfig.telegram_link || '';
+            document.getElementById('get_key_link').value = currentConfig.get_key_link || '';
+            document.getElementById('logo_url').value = currentConfig.logo_url || '';
+            document.getElementById('shizuku_logo_url').value = currentConfig.shizuku_logo_url || '';
+            document.getElementById('freefire_logo_url').value = currentConfig.freefire_logo_url || '';
+            document.getElementById('freefire_max_logo_url').value = currentConfig.freefire_max_logo_url || '';
+            document.getElementById('update_available').checked = currentConfig.update_available || false;
+            document.getElementById('update_version').value = currentConfig.update_version || '';
+            document.getElementById('update_url').value = currentConfig.update_url || '';
+            document.getElementById('update_changelog').value = currentConfig.update_changelog || '';
         }
         
-        function loadFreeFireButtons() {
-            const list = document.getElementById('freefire-buttons-list');
-            list.innerHTML = '';
-            
-            if (currentConfig.freefire_buttons) {
-                currentConfig.freefire_buttons.forEach((btn, index) => {
-                    list.innerHTML += createButtonCard(btn, 'freefire', index);
-                });
-            }
+        function populateMaintenance() {
+            if (!currentConfig) return;
+            document.getElementById('maintenance').checked = currentConfig.maintenance || false;
+            document.getElementById('root_maintenance').checked = currentConfig.root_maintenance || false;
+            document.getElementById('nonroot_maintenance').checked = currentConfig.nonroot_maintenance || false;
+            document.getElementById('freefire_maintenance').checked = currentConfig.freefire_maintenance || false;
+            document.getElementById('freefire_max_maintenance').checked = currentConfig.freefire_max_maintenance || false;
         }
         
-        function loadFreeFireMaxButtons() {
-            const list = document.getElementById('freefire-max-buttons-list');
-            list.innerHTML = '';
-            
-            if (currentConfig.freefire_max_buttons) {
-                currentConfig.freefire_max_buttons.forEach((btn, index) => {
-                    list.innerHTML += createButtonCard(btn, 'freefire_max', index);
-                });
-            }
+        function populateApi() {
+            if (!currentConfig) return;
+            document.getElementById('api_base_url').value = currentConfig.api_base_url || '';
+            document.getElementById('master_key').value = currentConfig.master_key || '';
+            document.getElementById('master_key_expiry').value = currentConfig.master_key_expiry ? currentConfig.master_key_expiry.slice(0, 16) : '';
         }
         
-        function loadAllButtons() {
-            const list = document.getElementById('all-buttons-list');
-            list.innerHTML = '<h3>Free Fire Buttons</h3>';
-            
-            if (currentConfig.freefire_buttons) {
-                currentConfig.freefire_buttons.forEach((btn, index) => {
-                    list.innerHTML += createButtonCard(btn, 'freefire', index);
-                });
-            }
-            
-            list.innerHTML += '<h3>Free Fire MAX Buttons</h3>';
-            
-            if (currentConfig.freefire_max_buttons) {
-                currentConfig.freefire_max_buttons.forEach((btn, index) => {
-                    list.innerHTML += createButtonCard(btn, 'freefire_max', index);
-                });
-            }
+        async function saveGeneral() {
+            currentConfig.app_name = document.getElementById('app_name').value;
+            currentConfig.login_name = document.getElementById('login_name').value;
+            currentConfig.maintenance_message = document.getElementById('maintenance_message').value;
+            currentConfig.telegram_link = document.getElementById('telegram_link').value;
+            currentConfig.get_key_link = document.getElementById('get_key_link').value;
+            currentConfig.logo_url = document.getElementById('logo_url').value;
+            currentConfig.shizuku_logo_url = document.getElementById('shizuku_logo_url').value;
+            currentConfig.freefire_logo_url = document.getElementById('freefire_logo_url').value;
+            currentConfig.freefire_max_logo_url = document.getElementById('freefire_max_logo_url').value;
+            await saveConfig();
         }
         
-        function createButtonCard(btn, type, index) {
-            return `
-                <div class="card">
-                    <h3>${btn.name}</h3>
-                    <p><strong>ID:</strong> ${btn.id}</p>
-                    <p><strong>URL:</strong> ${btn.url || 'N/A'}</p>
-                    <p><strong>Key URL:</strong> ${btn.urlKeyTxt || 'N/A'}</p>
-                    <div class="grid-3">
-                        <div>
-                            <span class="status-badge ${btn.enabled ? 'status-active' : 'status-inactive'}">
-                                ${btn.enabled ? 'ENABLED' : 'DISABLED'}
-                            </span>
+        async function saveUpdate() {
+            currentConfig.update_available = document.getElementById('update_available').checked;
+            currentConfig.update_version = document.getElementById('update_version').value;
+            currentConfig.update_url = document.getElementById('update_url').value;
+            currentConfig.update_changelog = document.getElementById('update_changelog').value;
+            await saveConfig();
+        }
+        
+        async function saveMaintenance() {
+            currentConfig.maintenance = document.getElementById('maintenance').checked;
+            currentConfig.root_maintenance = document.getElementById('root_maintenance').checked;
+            currentConfig.nonroot_maintenance = document.getElementById('nonroot_maintenance').checked;
+            currentConfig.freefire_maintenance = document.getElementById('freefire_maintenance').checked;
+            currentConfig.freefire_max_maintenance = document.getElementById('freefire_max_maintenance').checked;
+            await saveConfig();
+        }
+        
+        async function saveApiConfig() {
+            currentConfig.api_base_url = document.getElementById('api_base_url').value;
+            currentConfig.master_key = document.getElementById('master_key').value;
+            currentConfig.master_key_expiry = document.getElementById('master_key_expiry').value;
+            await saveConfig();
+        }
+        
+        async function toggleGlobalMaintenance() {
+            currentConfig.maintenance = !currentConfig.maintenance;
+            await saveConfig();
+            await loadDashboard();
+        }
+        
+        async function loadButtons(type) {
+            if (!currentConfig) await loadConfig();
+            const container = document.getElementById(type === 'freefire_buttons' ? 'freefire-buttons' : 'ffmax-buttons');
+            container.innerHTML = '';
+            
+            const buttons = currentConfig[type] || [];
+            buttons.forEach((btn, index) => {
+                container.innerHTML += `
+                    <div class="card" style="margin-bottom: 12px;">
+                        <h3>${btn.name}</h3>
+                        <p><strong>ID:</strong> ${btn.id}</p>
+                        <div class="grid grid-3">
+                            <span class="badge ${btn.enabled ? 'badge-success' : 'badge-danger'}">${btn.enabled ? 'ENABLED' : 'DISABLED'}</span>
+                            <span class="badge ${btn.maintenance ? 'badge-warning' : 'badge-success'}">${btn.maintenance ? 'MAINTENANCE' : 'ACTIVE'}</span>
+                            <span class="badge ${btn.persist ? 'badge-info' : 'badge-danger'}">${btn.persist ? 'PERSIST' : 'NORMAL'}</span>
                         </div>
-                        <div>
-                            <span class="status-badge ${btn.maintenance ? 'status-inactive' : 'status-active'}">
-                                ${btn.maintenance ? 'MAINTENANCE' : 'ACTIVE'}
-                            </span>
-                        </div>
-                        <div>
-                            <span class="status-badge ${btn.persist ? 'status-active' : 'status-inactive'}">
-                                ${btn.persist ? 'PERSIST' : 'NORMAL'}
-                            </span>
+                        <div class="button-actions">
+                            <button class="btn btn-primary" onclick="editButton('${type}', ${index})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteButton('${type}', ${index})">Delete</button>
+                            <button class="btn btn-warning" onclick="toggleButton('${type}', ${index}, 'enabled')">${btn.enabled ? 'Disable' : 'Enable'}</button>
+                            <button class="btn btn-info" onclick="toggleButton('${type}', ${index}, 'maintenance')">${btn.maintenance ? 'Remove Maintenance' : 'Set Maintenance'}</button>
                         </div>
                     </div>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="editButton('${type}', ${index})">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteButton('${type}', ${index})">Delete</button>
-                        <button class="btn btn-warning" onclick="toggleButtonEnabled('${type}', ${index})">
-                            ${btn.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                        <button class="btn btn-info" onclick="toggleButtonMaintenance('${type}', ${index})">
-                            ${btn.maintenance ? 'Remove Maintenance' : 'Set Maintenance'}
-                        </button>
-                    </div>
-                </div>
-            `;
+                `;
+            });
         }
         
         function addButton(type) {
-            editingButtonType = type;
-            editingButtonIndex = null;
-            document.getElementById('modal-title').textContent = 
-                type === 'freefire' ? 'Add Free Fire Button' : 'Add Free Fire MAX Button';
+            editingType = type;
+            editingIndex = null;
+            document.getElementById('modal-title').textContent = type === 'freefire_buttons' ? 'Add Free Fire Button' : 'Add Free Fire MAX Button';
             document.getElementById('btn-id').value = '';
             document.getElementById('btn-name').value = '';
             document.getElementById('btn-url').value = '';
@@ -1368,10 +1405,9 @@ PREMIUM_ADMIN_HTML = """
         }
         
         function editButton(type, index) {
-            editingButtonType = type;
-            editingButtonIndex = index;
-            const buttons = type === 'freefire' ? currentConfig.freefire_buttons : currentConfig.freefire_max_buttons;
-            const btn = buttons[index];
+            editingType = type;
+            editingIndex = index;
+            const btn = currentConfig[type][index];
             document.getElementById('modal-title').textContent = 'Edit Button';
             document.getElementById('btn-id').value = btn.id;
             document.getElementById('btn-name').value = btn.name;
@@ -1383,7 +1419,7 @@ PREMIUM_ADMIN_HTML = """
             document.getElementById('button-modal').style.display = 'flex';
         }
         
-        function saveButton() {
+        async function saveButton() {
             const buttonData = {
                 id: document.getElementById('btn-id').value,
                 name: document.getElementById('btn-name').value,
@@ -1394,77 +1430,60 @@ PREMIUM_ADMIN_HTML = """
                 persist: document.getElementById('btn-persist').checked
             };
             
-            const buttons = editingButtonType === 'freefire' ? 
-                (currentConfig.freefire_buttons ||= []) : 
-                (currentConfig.freefire_max_buttons ||= []);
+            if (!currentConfig[editingType]) currentConfig[editingType] = [];
             
-            if (editingButtonIndex !== null && editingButtonIndex !== undefined) {
-                buttons[editingButtonIndex] = buttonData;
+            if (editingIndex !== null) {
+                currentConfig[editingType][editingIndex] = buttonData;
             } else {
-                buttons.push(buttonData);
+                currentConfig[editingType].push(buttonData);
             }
             
-            saveConfig();
+            await saveConfig();
             closeModal();
-            showTab(editingButtonType);
+            loadButtons(editingType);
         }
         
-        function deleteButton(type, index) {
-            if (confirm('Are you sure you want to delete this button?')) {
-                const buttons = type === 'freefire' ? currentConfig.freefire_buttons : currentConfig.freefire_max_buttons;
-                buttons.splice(index, 1);
-                saveConfig();
-                showTab(type);
+        async function deleteButton(type, index) {
+            if (confirm('Delete this button?')) {
+                currentConfig[type].splice(index, 1);
+                await saveConfig();
+                loadButtons(type);
             }
         }
         
-        function toggleButtonEnabled(type, index) {
-            const buttons = type === 'freefire' ? currentConfig.freefire_buttons : currentConfig.freefire_max_buttons;
-            buttons[index].enabled = !buttons[index].enabled;
-            saveConfig();
-            showTab(type);
+        async function toggleButton(type, index, property) {
+            currentConfig[type][index][property] = !currentConfig[type][index][property];
+            await saveConfig();
+            loadButtons(type);
         }
         
-        function toggleButtonMaintenance(type, index) {
-            const buttons = type === 'freefire' ? currentConfig.freefire_buttons : currentConfig.freefire_max_buttons;
-            buttons[index].maintenance = !buttons[index].maintenance;
-            saveConfig();
-            showTab(type);
-        }
-        
-        function loadRootLibs() {
-            const list = document.getElementById('root-libs-list');
-            list.innerHTML = '';
+        async function loadRootLibs() {
+            if (!currentConfig) await loadConfig();
+            const container = document.getElementById('rootlibs-list');
+            container.innerHTML = '';
             
-            if (currentConfig.root_libs) {
-                currentConfig.root_libs.forEach((lib, index) => {
-                    list.innerHTML += `
-                        <div class="card">
-                            <h3>${lib.name}</h3>
-                            <p><strong>ID:</strong> ${lib.id}</p>
-                            <p><strong>URL:</strong> ${lib.url}</p>
-                            <p><strong>Path:</strong> ${lib.lib_path}</p>
-                            <p><strong>Arch:</strong> ${lib.arch}</p>
-                            <div class="grid-2">
-                                <span class="status-badge ${lib.enabled ? 'status-active' : 'status-inactive'}">
-                                    ${lib.enabled ? 'ENABLED' : 'DISABLED'}
-                                </span>
-                                <span class="status-badge ${lib.maintenance ? 'status-inactive' : 'status-active'}">
-                                    ${lib.maintenance ? 'MAINTENANCE' : 'ACTIVE'}
-                                </span>
-                            </div>
-                            <div style="margin-top: 15px;">
-                                <button class="btn btn-primary" onclick="editRootLib(${index})">Edit</button>
-                                <button class="btn btn-danger" onclick="deleteRootLib(${index})">Delete</button>
-                            </div>
+            const libs = currentConfig.root_libs || [];
+            libs.forEach((lib, index) => {
+                container.innerHTML += `
+                    <div class="card" style="margin-bottom: 12px;">
+                        <h3>${lib.name}</h3>
+                        <p><strong>ID:</strong> ${lib.id}</p>
+                        <p><strong>Path:</strong> ${lib.lib_path}</p>
+                        <div class="grid grid-2">
+                            <span class="badge ${lib.enabled ? 'badge-success' : 'badge-danger'}">${lib.enabled ? 'ENABLED' : 'DISABLED'}</span>
+                            <span class="badge ${lib.maintenance ? 'badge-warning' : 'badge-success'}">${lib.maintenance ? 'MAINTENANCE' : 'ACTIVE'}</span>
                         </div>
-                    `;
-                });
-            }
+                        <div class="button-actions">
+                            <button class="btn btn-primary" onclick="editRootLib(${index})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteRootLib(${index})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
         }
         
         function addRootLib() {
-            editingRootLibIndex = null;
+            editingIndex = null;
             document.getElementById('lib-id').value = '';
             document.getElementById('lib-name').value = '';
             document.getElementById('lib-url').value = '';
@@ -1476,7 +1495,7 @@ PREMIUM_ADMIN_HTML = """
         }
         
         function editRootLib(index) {
-            editingRootLibIndex = index;
+            editingIndex = index;
             const lib = currentConfig.root_libs[index];
             document.getElementById('lib-id').value = lib.id;
             document.getElementById('lib-name').value = lib.name;
@@ -1488,7 +1507,7 @@ PREMIUM_ADMIN_HTML = """
             document.getElementById('rootlib-modal').style.display = 'flex';
         }
         
-        function saveRootLib() {
+        async function saveRootLib() {
             const libData = {
                 id: document.getElementById('lib-id').value,
                 name: document.getElementById('lib-name').value,
@@ -1499,224 +1518,200 @@ PREMIUM_ADMIN_HTML = """
                 maintenance: document.getElementById('lib-maintenance').checked
             };
             
-            if (!currentConfig.root_libs) {
-                currentConfig.root_libs = [];
-            }
+            if (!currentConfig.root_libs) currentConfig.root_libs = [];
             
-            if (editingRootLibIndex !== null) {
-                currentConfig.root_libs[editingRootLibIndex] = libData;
+            if (editingIndex !== null) {
+                currentConfig.root_libs[editingIndex] = libData;
             } else {
                 currentConfig.root_libs.push(libData);
             }
             
-            saveConfig();
+            await saveConfig();
             closeRootLibModal();
             loadRootLibs();
         }
         
-        function deleteRootLib(index) {
-            if (confirm('Are you sure you want to delete this root library?')) {
+        async function deleteRootLib(index) {
+            if (confirm('Delete this root library?')) {
                 currentConfig.root_libs.splice(index, 1);
-                saveConfig();
+                await saveConfig();
                 loadRootLibs();
             }
         }
         
-        function loadAssets() {
-            const list = document.getElementById('assets-list');
-            list.innerHTML = '';
+        async function loadAssets() {
+            if (!currentConfig) await loadConfig();
+            document.getElementById('assets_version').value = currentConfig.assets_version || '';
+            const container = document.getElementById('assets-list');
+            container.innerHTML = '';
             
-            if (currentConfig.assets) {
-                currentConfig.assets.forEach((asset, index) => {
-                    list.innerHTML += `
-                        <div class="card">
-                            <h3>${asset.name}</h3>
-                            <p><strong>URL:</strong> ${asset.url}</p>
-                            <div style="margin-top: 15px;">
-                                <button class="btn btn-primary" onclick="editAsset(${index})">Edit</button>
-                                <button class="btn btn-danger" onclick="deleteAsset(${index})">Delete</button>
-                            </div>
+            const assets = currentConfig.assets || [];
+            assets.forEach((asset, index) => {
+                container.innerHTML += `
+                    <div class="card" style="margin-bottom: 12px;">
+                        <h3>${asset.name}</h3>
+                        <p><strong>URL:</strong> ${asset.url}</p>
+                        <div class="button-actions">
+                            <button class="btn btn-primary" onclick="editAsset(${index})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteAsset(${index})">Delete</button>
                         </div>
-                    `;
-                });
-            }
+                    </div>
+                `;
+            });
         }
         
         function addAsset() {
-            editingAssetIndex = null;
+            editingIndex = null;
             document.getElementById('asset-name').value = '';
             document.getElementById('asset-url').value = '';
             document.getElementById('asset-modal').style.display = 'flex';
         }
         
         function editAsset(index) {
-            editingAssetIndex = index;
+            editingIndex = index;
             const asset = currentConfig.assets[index];
             document.getElementById('asset-name').value = asset.name;
             document.getElementById('asset-url').value = asset.url;
             document.getElementById('asset-modal').style.display = 'flex';
         }
         
-        function saveAsset() {
+        async function saveAsset() {
             const assetData = {
                 name: document.getElementById('asset-name').value,
                 url: document.getElementById('asset-url').value
             };
             
-            if (!currentConfig.assets) {
-                currentConfig.assets = [];
-            }
+            if (!currentConfig.assets) currentConfig.assets = [];
             
-            if (editingAssetIndex !== null) {
-                currentConfig.assets[editingAssetIndex] = assetData;
+            if (editingIndex !== null) {
+                currentConfig.assets[editingIndex] = assetData;
             } else {
                 currentConfig.assets.push(assetData);
             }
             
-            saveConfig();
+            await saveConfig();
             closeAssetModal();
             loadAssets();
         }
         
-        function deleteAsset(index) {
-            if (confirm('Are you sure you want to delete this asset?')) {
+        async function deleteAsset(index) {
+            if (confirm('Delete this asset?')) {
                 currentConfig.assets.splice(index, 1);
-                saveConfig();
+                await saveConfig();
                 loadAssets();
             }
         }
         
-        function saveAssetsVersion() {
+        async function saveAssetsVersion() {
             currentConfig.assets_version = document.getElementById('assets_version').value;
-            saveConfig();
+            await saveConfig();
         }
         
-        function toggleMaintenance() {
-            currentConfig.maintenance = !currentConfig.maintenance;
-            saveConfig();
-            loadDashboard();
-        }
-        
-        function saveMaintenance() {
-            currentConfig.maintenance = document.getElementById('maintenance').checked;
-            currentConfig.root_maintenance = document.getElementById('root_maintenance').checked;
-            currentConfig.nonroot_maintenance = document.getElementById('nonroot_maintenance').checked;
-            currentConfig.freefire_maintenance = document.getElementById('freefire_maintenance').checked;
-            currentConfig.freefire_max_maintenance = document.getElementById('freefire_max_maintenance').checked;
-            saveConfig();
-        }
-        
-        function saveApiConfig() {
-            currentConfig.api_base_url = document.getElementById('api_base_url').value;
-            currentConfig.master_key = document.getElementById('master_key').value;
-            currentConfig.master_key_expiry = document.getElementById('master_key_expiry').value;
-            saveConfig();
-        }
-        
-        function createBackup() {
-            fetch('/api/admin/backup', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ note: 'Manual backup' })
-            })
-            .then(response => response.json())
-            .then(data => {
+        async function createBackup() {
+            try {
+                const response = await fetch('/api/admin/backup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({note: 'Manual backup'})
+                });
+                const data = await response.json();
                 if (data.success) {
-                    alert('Backup created successfully');
+                    showToast('Backup created successfully');
                     loadBackups();
                 }
-            });
-        }
-        
-        function loadBackups() {
-            fetch('/api/admin/backups')
-                .then(response => response.json())
-                .then(backups => {
-                    const list = document.getElementById('backups-list');
-                    list.innerHTML = '';
-                    backups.forEach(backup => {
-                        list.innerHTML += `
-                            <div class="backup-item">
-                                <div>
-                                    <strong>Backup #${backup.id}</strong>
-                                    <p>Created: ${backup.created_at}</p>
-                                    <p>Note: ${backup.note || 'N/A'}</p>
-                                </div>
-                                <div>
-                                    <button class="btn btn-primary" onclick="restoreBackup(${backup.id})">Restore</button>
-                                    <button class="btn btn-danger" onclick="deleteBackup(${backup.id})">Delete</button>
-                                </div>
-                            </div>
-                        `;
-                    });
-                });
-        }
-        
-        function restoreBackup(id) {
-            if (confirm('Are you sure you want to restore this backup?')) {
-                fetch(`/api/admin/backup/${id}/restore`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Backup restored successfully');
-                        loadConfig();
-                    }
-                });
+            } catch (error) {
+                console.error('Error creating backup:', error);
             }
         }
         
-        function deleteBackup(id) {
-            if (confirm('Are you sure you want to delete this backup?')) {
-                fetch(`/api/admin/backup/${id}`, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(data => {
+        async function loadBackups() {
+            try {
+                const response = await fetch('/api/admin/backups');
+                const backups = await response.json();
+                const container = document.getElementById('backups-list');
+                container.innerHTML = '';
+                
+                backups.forEach(backup => {
+                    container.innerHTML += `
+                        <div class="card" style="margin-bottom: 12px;">
+                            <h3>Backup #${backup.id}</h3>
+                            <p><strong>Created:</strong> ${backup.created_at}</p>
+                            <p><strong>Note:</strong> ${backup.note || 'N/A'}</p>
+                            <div class="button-actions">
+                                <button class="btn btn-primary" onclick="restoreBackup(${backup.id})">Restore</button>
+                                <button class="btn btn-danger" onclick="deleteBackup(${backup.id})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error('Error loading backups:', error);
+            }
+        }
+        
+        async function restoreBackup(id) {
+            if (confirm('Restore this backup?')) {
+                try {
+                    const response = await fetch(`/api/admin/backup/${id}/restore`, {method: 'POST'});
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Backup restored');
+                        await loadConfig();
+                    }
+                } catch (error) {
+                    console.error('Error restoring backup:', error);
+                }
+            }
+        }
+        
+        async function deleteBackup(id) {
+            if (confirm('Delete this backup?')) {
+                try {
+                    const response = await fetch(`/api/admin/backup/${id}`, {method: 'DELETE'});
+                    const data = await response.json();
                     if (data.success) {
                         loadBackups();
                     }
-                });
+                } catch (error) {
+                    console.error('Error deleting backup:', error);
+                }
             }
         }
         
-        function loadLogs() {
-            fetch('/api/admin/logs')
-                .then(response => response.json())
-                .then(logs => {
-                    const list = document.getElementById('logs-list');
-                    list.innerHTML = '';
-                    logs.forEach(log => {
-                        list.innerHTML += `
-                            <div class="log-entry">
-                                <strong>${log.action}</strong>
-                                <p>Time: ${log.timestamp}</p>
-                                <p>IP: ${log.ip}</p>
-                                ${log.details ? `<p>Details: ${log.details}</p>` : ''}
-                            </div>
-                        `;
-                    });
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/admin/logs');
+                const logs = await response.json();
+                const container = document.getElementById('logs-list');
+                container.innerHTML = '';
+                
+                logs.forEach(log => {
+                    container.innerHTML += `
+                        <div class="log-entry">
+                            <strong>${log.action}</strong>
+                            <p>Time: ${log.timestamp}</p>
+                            <p>IP: ${log.ip}</p>
+                            ${log.details ? `<p>Details: ${log.details}</p>` : ''}
+                        </div>
+                    `;
                 });
+            } catch (error) {
+                console.error('Error loading logs:', error);
+            }
         }
         
-        function refreshJsonView() {
+        function refreshJson() {
             const viewer = document.getElementById('json-viewer');
             viewer.textContent = JSON.stringify(currentConfig, null, 2);
         }
         
         function copyJson() {
-            const jsonText = JSON.stringify(currentConfig, null, 2);
-            navigator.clipboard.writeText(jsonText).then(() => {
-                alert('JSON copied to clipboard');
-            });
+            navigator.clipboard.writeText(JSON.stringify(currentConfig, null, 2))
+                .then(() => showToast('JSON copied to clipboard'));
         }
         
         function downloadJson() {
-            const jsonText = JSON.stringify(currentConfig, null, 2);
-            const blob = new Blob([jsonText], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(currentConfig, null, 2)], {type: 'application/json'});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -1741,54 +1736,19 @@ PREMIUM_ADMIN_HTML = """
             document.getElementById('asset-modal').style.display = 'none';
         }
         
-        function saveConfig() {
-            fetch('/api/admin/config', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(currentConfig)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    console.log('Configuration saved');
-                }
-            })
-            .catch(error => {
-                console.error('Error saving config:', error);
-            });
-        }
-        
-        // Form submissions
-        document.getElementById('general-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            currentConfig.app_name = document.getElementById('app_name').value;
-            currentConfig.login_name = document.getElementById('login_name').value;
-            currentConfig.maintenance_message = document.getElementById('maintenance_message').value;
-            currentConfig.telegram_link = document.getElementById('telegram_link').value;
-            currentConfig.get_key_link = document.getElementById('get_key_link').value;
-            currentConfig.logo_url = document.getElementById('logo_url').value;
-            currentConfig.shizuku_logo_url = document.getElementById('shizuku_logo_url').value;
-            currentConfig.freefire_logo_url = document.getElementById('freefire_logo_url').value;
-            currentConfig.freefire_max_logo_url = document.getElementById('freefire_max_logo_url').value;
-            
-            saveConfig();
-            alert('General settings saved successfully');
-        });
-        
-        document.getElementById('update-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            currentConfig.update_available = document.getElementById('update_available').checked;
-            currentConfig.update_version = document.getElementById('update_version').value;
-            currentConfig.update_url = document.getElementById('update_url').value;
-            currentConfig.update_changelog = document.getElementById('update_changelog').value;
-            
-            saveConfig();
-            alert('Update settings saved successfully');
-        });
+        // Add animation styles
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
         
         // Initial load
         loadConfig();
@@ -1803,16 +1763,9 @@ LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HEX Protocol - Admin Login</title>
+    <title>HEX Protocol - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #1a1a2e;
-            --text-primary: #e0e0e0;
-            --accent: #00ff88;
-            --border: #2a2a3e;
-        }
-        
         * {
             margin: 0;
             padding: 0;
@@ -1820,32 +1773,52 @@ LOGIN_HTML = """
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0a0a0f 100%);
+            font-family: 'Inter', sans-serif;
+            background: #0a0e17;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.2), transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(16, 185, 129, 0.15), transparent 50%);
+            pointer-events: none;
         }
         
         .login-container {
-            background: var(--bg-secondary);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
             padding: 40px;
-            border-radius: 15px;
-            border: 1px solid var(--border);
             width: 100%;
             max-width: 400px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            position: relative;
+            z-index: 1;
         }
         
         h1 {
-            background: linear-gradient(135deg, var(--accent) 0%, #00ffcc 100%);
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #8b5cf6, #10b981);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             text-align: center;
             margin-bottom: 30px;
-            font-size: 2em;
+            letter-spacing: -0.5px;
         }
         
         .form-group {
@@ -1855,47 +1828,52 @@ LOGIN_HTML = """
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: var(--text-primary);
+            color: #9ca3af;
+            font-weight: 500;
+            font-size: 0.9rem;
         }
         
         .form-group input {
             width: 100%;
-            padding: 12px;
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-primary);
+            padding: 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: #e5e7eb;
+            font-size: 1rem;
+            transition: all 0.3s;
         }
         
         .form-group input:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
         }
         
         button {
             width: 100%;
             padding: 14px;
-            background: var(--accent);
-            color: var(--bg-primary);
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
             border: none;
-            border-radius: 6px;
-            font-size: 16px;
+            border-radius: 10px;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
+            margin-top: 10px;
         }
         
         button:hover {
-            background: #00cc6a;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
+            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3);
         }
         
         .error {
-            color: #ff4444;
+            color: #ef4444;
             text-align: center;
-            margin-top: 10px;
+            margin-top: 15px;
+            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -1926,9 +1904,7 @@ LOGIN_HTML = """
             try {
                 const response = await fetch('/api/admin/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ username, password })
                 });
                 
@@ -1962,22 +1938,12 @@ async def get_full_config():
 
 @app.get("/api/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "version": "6.0"
-    }
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
 async def root():
-    return {
-        "message": "HEX Protocol System API",
-        "version": "6.0",
-        "admin_panel": "/admin",
-        "docs": "/api/docs"
-    }
+    return {"message": "HEX Protocol System API", "version": "6.0"}
 
-# Admin endpoints
 @app.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page():
     return LOGIN_HTML
@@ -1998,7 +1964,7 @@ async def admin_login(request: Request):
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_panel():
-    return PREMIUM_ADMIN_HTML
+    return MODERN_ADMIN_HTML
 
 @app.get("/api/admin/config")
 async def admin_get_config():
@@ -2006,18 +1972,26 @@ async def admin_get_config():
 
 @app.post("/api/admin/config")
 async def admin_update_config(request: Request):
-    config_data = await request.json()
-    save_config(config_data)
-    log_action("Configuration updated", request, "Full configuration update")
-    return {"success": True, "message": "Configuration saved"}
+    try:
+        config_data = await request.json()
+        success = save_config(config_data)
+        if success:
+            log_action("Configuration updated", request, "Full configuration update")
+            return {"success": True, "message": "Configuration saved"}
+        else:
+            return {"success": False, "message": "Error saving configuration"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 @app.post("/api/admin/backup")
 async def create_backup_endpoint(request: Request):
     data = await request.json()
     note = data.get("note", "")
-    create_backup(note)
-    log_action("Backup created", request, note)
-    return {"success": True, "message": "Backup created"}
+    success = create_backup(note)
+    if success:
+        log_action("Backup created", request, note)
+        return {"success": True, "message": "Backup created"}
+    return {"success": False, "message": "Error creating backup"}
 
 @app.get("/api/admin/backups")
 async def get_backups():
@@ -2043,9 +2017,10 @@ async def restore_backup(backup_id: int, request: Request):
         
         if backup:
             config_data = json.loads(backup["config_data"])
-            save_config(config_data)
-            log_action("Backup restored", request, f"Restored backup #{backup_id}")
-            return {"success": True, "message": "Backup restored"}
+            success = save_config(config_data)
+            if success:
+                log_action("Backup restored", request, f"Restored backup #{backup_id}")
+                return {"success": True, "message": "Backup restored"}
     
     return {"success": False, "message": "Backup not found"}
 
