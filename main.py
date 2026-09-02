@@ -77,7 +77,7 @@ def init_db():
 
 # Default config
 DEFAULT_CONFIG = {
-    "maintenance": False,
+    "maintenance": True,
     "root_maintenance": False,
     "nonroot_maintenance": False,
     "freefire_maintenance": False,
