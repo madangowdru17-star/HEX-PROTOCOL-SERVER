@@ -87,7 +87,7 @@ DEFAULT_CONFIG = {
     "master_key_expiry": "2026-12-31T23:59:59.000000",
     
     "login_name": "HEX PROXY XOS V6",
-    "app_name": "LAUDA CRACK HOGA 😂 BAHANCHOD, DADDY'S HERE HEX KID GO FUCK YOUR MOTHER"
+    "app_name": "LAUDA CRACK HOGA 😂 BAHANCHOD DADDY'S HERE HEX KID GO FUCK YOUR MOTHER"
     
     "maintenance_message": "We are performing scheduled maintenance. Please join our Telegram for updates.",
     "telegram_link": "https://t.me/+_s4OBzblpi0zNzE1",
